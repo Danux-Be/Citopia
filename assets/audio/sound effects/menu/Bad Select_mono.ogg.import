@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://bq1tpx5sa75g"
+path="res://.godot/imported/Bad Select_mono.ogg-215813cde46f7b72e5075802d0b77cb3.oggvorbisstr"
+
+[deps]
+
+source_file="res://assets/audio/sound effects/menu/Bad Select_mono.ogg"
+dest_files=["res://.godot/imported/Bad Select_mono.ogg-215813cde46f7b72e5075802d0b77cb3.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

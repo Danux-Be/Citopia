@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://b2gfgy0ceen4m"
+path="res://.godot/imported/Terrain 7.ogg-754c115d944b45ce655ddab40a808aed.oggvorbisstr"
+
+[deps]
+
+source_file="res://assets/audio/sound effects/terrain/Terrain 7.ogg"
+dest_files=["res://.godot/imported/Terrain 7.ogg-754c115d944b45ce655ddab40a808aed.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

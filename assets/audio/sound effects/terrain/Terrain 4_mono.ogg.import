@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://dkhpy5moe5blk"
+path="res://.godot/imported/Terrain 4_mono.ogg-8c0182865ba9e825be78ef49d858424f.oggvorbisstr"
+
+[deps]
+
+source_file="res://assets/audio/sound effects/terrain/Terrain 4_mono.ogg"
+dest_files=["res://.godot/imported/Terrain 4_mono.ogg-8c0182865ba9e825be78ef49d858424f.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

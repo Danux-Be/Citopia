@@ -1,0 +1,8 @@
+# Godot
+.godot/
+*.translation
+export_presets.cfg
+
+# System
+.DS_Store
+*.tmp

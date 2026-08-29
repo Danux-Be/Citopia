@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://c2wua5ihl8c4y"
+path="res://.godot/imported/Strong Winds.ogg-960442af2eccecc48fd7c2d3d1083011.oggvorbisstr"
+
+[deps]
+
+source_file="res://assets/audio/sound effects/menu/Strong Winds.ogg"
+dest_files=["res://.godot/imported/Strong Winds.ogg-960442af2eccecc48fd7c2d3d1083011.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

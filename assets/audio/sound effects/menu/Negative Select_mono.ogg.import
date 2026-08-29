@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://c2oj36qx1l6o3"
+path="res://.godot/imported/Negative Select_mono.ogg-6c523c31af1582dfe6622f31226c8f84.oggvorbisstr"
+
+[deps]
+
+source_file="res://assets/audio/sound effects/menu/Negative Select_mono.ogg"
+dest_files=["res://.godot/imported/Negative Select_mono.ogg-6c523c31af1582dfe6622f31226c8f84.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

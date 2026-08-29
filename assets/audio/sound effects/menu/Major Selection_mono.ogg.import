@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://2e0l7bopfmhi"
+path="res://.godot/imported/Major Selection_mono.ogg-7a189e313d1f292eac4327534b98e319.oggvorbisstr"
+
+[deps]
+
+source_file="res://assets/audio/sound effects/menu/Major Selection_mono.ogg"
+dest_files=["res://.godot/imported/Major Selection_mono.ogg-7a189e313d1f292eac4327534b98e319.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

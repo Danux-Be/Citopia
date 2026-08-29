@@ -1,0 +1,19 @@
+[remap]
+
+importer="oggvorbisstr"
+type="AudioStreamOggVorbis"
+uid="uid://cuqf6o58ejgmg"
+path="res://.godot/imported/Positive Select.ogg-5149e1c29b74cda9c6a126e33a003f2a.oggvorbisstr"
+
+[deps]
+
+source_file="res://assets/audio/sound effects/menu/Positive Select.ogg"
+dest_files=["res://.godot/imported/Positive Select.ogg-5149e1c29b74cda9c6a126e33a003f2a.oggvorbisstr"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4
