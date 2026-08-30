@@ -89,6 +89,35 @@ func get_region(tile: Dictionary, texture_height: int, variant: int = 0) -> Rect
 	return Rect2(region_x, region_y, clip_w, clip_h)
 
 
+## Slope frame names → sheet slots, measured on terrain_grass.png (the
+## standardized Cytopia terrain sheets all share this layout).
+## Frames are 32x23: a flat diamond (15px) plus 8px of elevation headroom.
+enum SlopeFrame {
+	NONE = -1,  # draw a flat variant instead of a slope frame
+	N = 4,
+	E = 2, E_B = 5,
+	W = 3, W_B = 6,
+	NE = 0, NE_B = 9,
+	NW = 1, NW_B = 10,
+}
+
+const SLOPE_CLIP_H := 23  # full sheet height: diamond + one elevation step
+
+
+## Clip region of a slope frame for a terrain tile that has "slopeTiles".
+## Slot numbers are used directly: they were measured on the standardized
+## terrain sheets (the legacy formula (orientation + offset) produces
+## negative slots for half the orientations and does not match the art).
+func get_slope_region(tile: Dictionary, frame: SlopeFrame) -> Rect2:
+	var slopes: Dictionary = tile.get("slopeTiles", {})
+	var clip_w: int = int(slopes.get("clip_width", 32))
+	return Rect2(frame * clip_w, 0, clip_w, SLOPE_CLIP_H)
+
+
+func has_slopes(tile: Dictionary) -> bool:
+	return not tile.get("slopeTiles", {}).is_empty()
+
+
 ## Bottom-anchored draw rect so sprites stack upward from the tile base.
 func get_draw_rect(region: Rect2, screen_pos: Vector2, tile_h: float) -> Rect2:
 	return Rect2(screen_pos + Vector2(-region.size.x * 0.5, tile_h - region.size.y), region.size)

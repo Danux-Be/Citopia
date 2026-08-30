@@ -10,7 +10,7 @@
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 [![Engine: Godot 4.7](https://img.shields.io/badge/Engine-Godot%204.7-478CBF.svg)](https://godotengine.org)
 [![Platform: Linux](https://img.shields.io/badge/Platform-Linux-fcc624.svg)](#quick-start)
-[![Status: v0.2](https://img.shields.io/badge/Status-v0.2%20--%20sandbox-orange.svg)](#roadmap)
+[![Status: v0.3](https://img.shields.io/badge/Status-v0.3%20--%20terrain-orange.svg)](#roadmap)
 
 <img src="docs/screenshots/village.png" alt="A small village in Citopia: road, houses, shop, industry and the build bar" width="860"/>
 
@@ -41,6 +41,10 @@ open, on a modern and moddable engine.
 - 🏗️ **Build & bulldoze**: hover highlighting (green/red), multi-cell
   footprints (2×2 buildings...), ground/water placement rules from the tile
   database, ghost preview, demo village (`godot scenes/main.tscn ++ --demo`)
+- ⛰️ **Terrain elevation**: terraced hills (±1 step like the original),
+  slope sprites decoded from the legacy sheets, hand-drawn textured cliff
+  walls, raise/lower/level tools with drag-painting, animated showcase
+  (`godot scenes/main.tscn ++ --demo-elevation`)
 - 🎛️ **Build bar** with icons extracted from the sprite sheets + bulldozer
 - 🎵 **Original soundtracks**: shuffled playlist of the Cytopia OST
 - 🎥 **Smooth camera**: keyboard panning, cursor-centered mouse-wheel zoom,
@@ -51,7 +55,6 @@ open, on a modern and moddable engine.
 
 - [x] Tile hover, highlighting, place/demolish (the sandbox)
 - [x] Audio: original playlist and sounds
-- [ ] Terrain elevation + slope sprites
 - [ ] Simulation: RCI demand, population, economy
 - [ ] Automatic roads, residential/commercial/industrial zones
 - [ ] Mod support (the DNA of the original Cytopia project)
@@ -74,6 +77,7 @@ godot scenes/main.tscn  # or run directly
 | Pan the map | right or middle mouse drag |
 | Select a tool | click it in the build bar |
 | Build / demolish | left-click on the map |
+| Raise / lower / level terrain | hold left-click to paint |
 | Clear the tool | <kbd>ESC</kbd> |
 
 ## Architecture
@@ -82,7 +86,7 @@ godot scenes/main.tscn  # or run directly
 citopia/
 ├── scenes/main.tscn     # main scene
 ├── scripts/
-│   ├── game.gd          # root: input wiring, demo village
+│   ├── game.gd          # root: input wiring, drag-painting, demo scenes
 │   ├── tile_catalog.gd  # TileData.json loading, sprite-sheet regions, variants
 │   ├── iso_map.gd       # map model, isometric rendering, placement rules
 │   ├── build_bar.gd     # toolbar UI (icons from sprite sheets)

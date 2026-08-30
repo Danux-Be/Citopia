@@ -15,6 +15,9 @@ const TOOLS: Array[String] = [
 	"ND_1x1_Pond",
 ]
 const DOZER_ICON := "res://assets/images/ui/buttons/demolish.png"
+const RAISE_ICON := "res://assets/images/ui/buttons/raiseTerrain.png"
+const LOWER_ICON := "res://assets/images/ui/buttons/lowerTerrain.png"
+const LEVEL_ICON := "res://assets/images/ui/buttons/levelTerrain.png"
 const ICON_SIZE := 44.0
 
 var _catalog: TileCatalog
@@ -47,6 +50,9 @@ func _build_ui() -> void:
 		_bar.add_child(_make_tool_button(tile_id, _make_icon(tile), tile.get("title", tile_id)))
 
 	_bar.add_child(VSeparator.new())
+	_bar.add_child(_make_tool_button(IsoMap.RAISE, load(RAISE_ICON), "Raise terrain — hold left click to paint"))
+	_bar.add_child(_make_tool_button(IsoMap.LOWER, load(LOWER_ICON), "Lower terrain — hold left click to paint"))
+	_bar.add_child(_make_tool_button(IsoMap.LEVEL, load(LEVEL_ICON), "Level terrain up to the clicked height"))
 	_bar.add_child(_make_tool_button(IsoMap.DOZER, load(DOZER_ICON), "Bulldozer — remove buildings"))
 
 	add_child(panel)
