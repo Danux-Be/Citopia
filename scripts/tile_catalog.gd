@@ -92,13 +92,18 @@ func get_region(tile: Dictionary, texture_height: int, variant: int = 0) -> Rect
 ## Slope frame names → sheet slots, measured on terrain_grass.png (the
 ## standardized Cytopia terrain sheets all share this layout).
 ## Frames are 32x23: a flat diamond (15px) plus 8px of elevation headroom.
+##
+## Geometry (from pixel profiles):
+## - slots 0/9: RAMPS — floor surface rising toward the up-right edge
+##   (half the tile at floor level, half raised by one step)
+## - slots 1/10: mirrored ramps rising toward the up-left edge
+## - slot 4: CORNER PYRAMID — both up-edges rise, single peak
+## - slots 7/13/14/15: flat variants
 enum SlopeFrame {
 	NONE = -1,  # draw a flat variant instead of a slope frame
-	N = 4,
-	E = 2, E_B = 5,
-	W = 3, W_B = 6,
-	NE = 0, NE_B = 9,
-	NW = 1, NW_B = 10,
+	NE_RAMP_A = 0, NE_RAMP_B = 9,
+	NW_RAMP_A = 1, NW_RAMP_B = 10,
+	CORNER_PYRAMID = 4,
 }
 
 const SLOPE_CLIP_H := 23  # full sheet height: diamond + one elevation step

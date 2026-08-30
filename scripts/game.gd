@@ -14,6 +14,7 @@ var _paint_timer := 0.0
 var _demo_steps: Array = []
 var _demo_index := 0
 var _demo_accum := 0.0
+var _shot_frames := -1  # >0: save a screenshot after that many frames
 
 
 func _ready() -> void:
@@ -22,14 +23,17 @@ func _ready() -> void:
 	build_bar.tool_selected.connect(_on_tool_selected)
 
 	var args := OS.get_cmdline_user_args()
+	if "--shot" in args:
+		_shot_frames = 300  # let the demo finish before capturing
 	if "--demo" in args:
 		_place_demo_village()
 	if "--demo-elevation" in args:
+		# synthetic flat ground: the terraformed shapes read unambiguously
+		iso_map.generate_flat(48, 2)
 		_demo_steps = _build_elevation_steps()
-		# frame the demo area: ridge + hill around iso (30..61, 34..43)
 		var cam: Camera2D = $GameCamera
-		cam.position = Vector2(120, 690)
-		cam.zoom = Vector2(2.2, 2.2)
+		cam.position = Vector2(0, 384)
+		cam.zoom = Vector2(2.0, 2.0)
 
 
 func _on_tool_selected(tool_id: String) -> void:
@@ -39,6 +43,13 @@ func _on_tool_selected(tool_id: String) -> void:
 
 func _process(delta: float) -> void:
 	_step_elevation_demo(delta)
+	if _shot_frames > 0:
+		_shot_frames -= 1
+		if _shot_frames == 0:
+			var img := get_viewport().get_texture().get_image()
+			img.save_png("/tmp/citopia_shot.png")
+			print("SHOT_SAVED")
+			get_tree().quit()
 	if get_viewport().gui_get_hovered_control() != null:
 		iso_map.set_hovered(Vector2i(-1, -1))
 		_painting = false
@@ -117,23 +128,25 @@ func _place_near(tile_id: String, center: Vector2i) -> void:
 	push_warning("Demo placement failed everywhere near %s: %s" % [center, tile_id])
 
 
-## Animated showcase: two mountains and a plateau grow step by step.
+## Animated showcase: a village plateau, then a straight ridge grows along
+## its edge — continuous ramps on the flank, pyramids at the ridge ends.
 func _build_elevation_steps() -> Array:
 	var steps: Array = []
-	# Mountain ridge (grows into terraces through the cascading rule).
-	for i in 14:
-		steps.append([IsoMap.RAISE, Vector2i(30 + i, 38 + i % 3)])
-		steps.append([IsoMap.RAISE, Vector2i(31 + i, 40 + i % 2)])
-	# A round hill.
+	# A plateau for the village.
+	for dx in 6:
+		for dy in 4:
+			steps.append([IsoMap.LEVEL, Vector2i(18 + dx, 26 + dy)])
+	# A straight ridge rising along the plateau's north edge: the plateau
+	# tiles facing it draw continuous ramps; the ridge ends get pyramids.
+	for height_step in 1:
+		for x in range(20, 28):
+			steps.append([IsoMap.RAISE, Vector2i(x, 25)])
+	# A small round hill next to the plateau.
 	for ring in 3:
 		for a in 12:
 			var angle := TAU * a / 12.0
-			var p := Vector2i(52, 40) + Vector2i(int(round(cos(angle) * (3 - ring))), int(round(sin(angle) * (3 - ring))))
+			var p := Vector2i(33, 21) + Vector2i(int(round(cos(angle) * (3 - ring))), int(round(sin(angle) * (3 - ring))))
 			steps.append([IsoMap.RAISE, p])
-	# A plateau for the village.
-	for dx in 5:
-		for dy in 4:
-			steps.append([IsoMap.LEVEL, Vector2i(43 + dx, 49 + dy)])
 	return steps
 
 

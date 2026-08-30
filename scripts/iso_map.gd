@@ -82,6 +82,21 @@ func _elevation_level(e: float) -> int:
 	return 4
 
 
+## Flat test map (elevation showcase): uniform grass at `base_height`.
+func generate_flat(size: int, base_height: int) -> void:
+	map_size = size
+	_cells.clear()
+	_cells.resize(size * size)
+	for y in size:
+		for x in size:
+			var cell := Cell.new()
+			cell.terrain = "terrain_grass"
+			cell.terrain_variant = catalog.pick_variant(catalog.get_tile(cell.terrain))
+			cell.height = base_height
+			_cells[x + y * size] = cell
+	queue_redraw()
+
+
 func _pick_terrain(elevation: float, moisture: float) -> String:
 	if elevation < -0.32:
 		return "water"
@@ -352,11 +367,11 @@ func _draw_terrain(cell_pos: Vector2i, cell: Cell) -> void:
 		var rect := Rect2(pos2.x - region.size.x * 0.5, pos2.y + TILE_H - region.size.y, region.size.x, region.size.y)
 		draw_texture_rect_region(texture, rect, region)
 
-	# Walls towards every lower neighbor (the slope frames only handle the
-	# "higher neighbor" sides). Out-of-bounds counts as level 0 so the map
-	# edges show a clean slab instead of the void.
+	# Walls on the two camera-facing sides only (down-right / down-left);
+	# the up-facing sides are back faces, occluded by the tile itself.
+	# Out-of-bounds counts as level 0 so the map edges show a clean slab.
 	var drops := {}  # side Vector2i -> depth in pixels
-	for side: Vector2i in [Vector2i(0, -1), Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, 1)]:
+	for side: Vector2i in [Vector2i(1, 0), Vector2i(0, 1)]:
 		var n: Vector2i = cell_pos + side
 		if height_at(n) < cell.height and _cell(cell_pos).terrain != "water":
 			var depth := (cell.height - height_at(n)) * HEIGHT_STEP
@@ -378,10 +393,7 @@ func _draw_corner_walls(cell_pos: Vector2i, h: int, drops: Dictionary, texture: 
 	var w_pt := p + Vector2(-TILE_W * 0.5, TILE_H * 0.5) - Vector2(0, lift)
 	# corner position + the two wall sides meeting there
 	var corners := [
-		[n_pt, Vector2i(-1, 0), Vector2i(0, -1)],   # N corner: NW & NE faces
-		[e_pt, Vector2i(0, -1), Vector2i(1, 0)],    # E corner: NE & SE faces
-		[s_pt, Vector2i(1, 0), Vector2i(0, 1)],     # S corner: SE & SW faces
-		[w_pt, Vector2i(0, 1), Vector2i(-1, 0)],    # W corner: SW & NW faces
+		[s_pt, Vector2i(1, 0), Vector2i(0, 1)],     # S corner: SE & SW faces meet here
 	]
 	for entry: Array in corners:
 		var d1: int = drops.get(entry[1], 0)
@@ -459,30 +471,22 @@ func _draw_wall(cell_pos: Vector2i, side: Vector2i, h: int, hn: int, texture: Te
 	draw_polygon(points, PackedColorArray([col, col, col, col]), uvs, texture)
 
 
-## Chooses the sheet slot from which neighbors stand higher. Measured layout:
-## N=4, E=2/5, W=3/6, NE=0/9, NW=1/10, blocks=8/11/12, flats=7/13/14/15.
+## Chooses the slope sprite from the neighbors' heights.
+## - neighbor (x, y-1) higher  → ramp rising toward the up-right screen edge
+## - neighbor (x-1, y) higher  → ramp rising toward the up-left screen edge
+## - both higher               → corner pyramid (isolated peak corner)
+## - higher south/east neighbors draw AFTER us and cover the seam themselves.
 func _slope_frame(cell_pos: Vector2i, cell: Cell) -> TileCatalog.SlopeFrame:
 	var h := cell.height
-	var n := height_at(cell_pos + Vector2i(0, -1))
-	var w := height_at(cell_pos + Vector2i(-1, 0))
-	var e := height_at(cell_pos + Vector2i(1, 0))
-	var s := height_at(cell_pos + Vector2i(0, 1))
+	var higher_n := height_at(cell_pos + Vector2i(0, -1)) > h
+	var higher_w := height_at(cell_pos + Vector2i(-1, 0)) > h
 
-	var higher_n := n > h
-	var higher_w := w > h
-	var higher_e := e > h
-	var higher_s := s > h
-
-	# A higher south/east neighbor is drawn AFTER us and visually covers the
-	# seam with its own walls: stay flat in that case.
-	if higher_s or higher_e:
-		return TileCatalog.SlopeFrame.NONE
 	if higher_n and higher_w:
-		return TileCatalog.SlopeFrame.NW if cell.terrain_variant % 2 == 0 else TileCatalog.SlopeFrame.NW_B
+		return TileCatalog.SlopeFrame.CORNER_PYRAMID
 	if higher_n:
-		return TileCatalog.SlopeFrame.N
+		return TileCatalog.SlopeFrame.NE_RAMP_A if cell.terrain_variant % 2 == 0 else TileCatalog.SlopeFrame.NE_RAMP_B
 	if higher_w:
-		return TileCatalog.SlopeFrame.W if cell.terrain_variant % 2 == 0 else TileCatalog.SlopeFrame.W_B
+		return TileCatalog.SlopeFrame.NW_RAMP_A if cell.terrain_variant % 2 == 0 else TileCatalog.SlopeFrame.NW_RAMP_B
 	return TileCatalog.SlopeFrame.NONE
 
 
