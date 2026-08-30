@@ -9,6 +9,10 @@ const GROWTH_PER_TICK := 3    # buildings spawned per tick
 
 @onready var iso_map: IsoMap = $IsoMap
 @onready var build_bar: CanvasLayer = $BuildBar
+@onready var hud: CanvasLayer = $HUD
+@onready var map_editor: CanvasLayer = $MapEditor
+
+var menu_mode := true  # map editor open, city not founded yet
 
 var _fail_stream: AudioStream
 var _painting := false
@@ -24,10 +28,16 @@ func _ready() -> void:
 	_fail_stream = load("res://assets/audio/sound effects/game/fail_placement.ogg")
 	build_bar.setup(iso_map.catalog)
 	build_bar.tool_selected.connect(_on_tool_selected)
+	hud.setup(iso_map, $GameCamera)
+	map_editor.setup(iso_map, $GameCamera)
+	map_editor.found_city.connect(found_city)
+	build_bar.visible = false
 
 	var args := OS.get_cmdline_user_args()
 	if "--shot" in args:
 		_shot_frames = 300  # let the demo finish before capturing
+	if "--demo" in args or "--demo-elevation" in args:
+		found_city()  # demos skip the map editor
 	if "--demo" in args:
 		_place_demo_village()
 	if "--demo-elevation" in args:
@@ -38,6 +48,14 @@ func _ready() -> void:
 		cam.position = Vector2(0, 384)
 		cam.zoom = Vector2(2.0, 2.0)
 
+
+## Leaves the map editor and starts the actual game on the previewed map.
+func found_city() -> void:
+	menu_mode = false
+	map_editor.visible = false
+	build_bar.visible = true
+	if "--demo" in OS.get_cmdline_user_args():
+		build_bar._on_tab_changed(1)  # showcase the browsable tile grid
 
 func _on_tool_selected(tool_id: String) -> void:
 	iso_map.selected_tool = tool_id
@@ -53,23 +71,27 @@ func _process(delta: float) -> void:
 			img.save_png("/tmp/citopia_shot.png")
 			print("SHOT_SAVED")
 			get_tree().quit()
-	if get_viewport().gui_get_hovered_control() != null:
+	var over_ui := get_viewport().gui_get_hovered_control() != null
+	if over_ui:
 		iso_map.set_hovered(Vector2i(-1, -1))
 		_painting = false
-		return
-	iso_map.set_hovered(iso_map.screen_to_iso(iso_map.get_local_mouse_position()))
+	else:
+		iso_map.set_hovered(iso_map.screen_to_iso(iso_map.get_local_mouse_position()))
 
-	# Drag-painting for terrain tools and zones.
-	var tool := iso_map.selected_tool
-	var paintable := tool in [IsoMap.RAISE, IsoMap.LOWER, IsoMap.LEVEL, IsoMap.DOZER, IsoMap.DEZONE] \
-			or iso_map.is_zone_tool(tool)
-	if _painting and paintable:
-		_paint_timer -= delta
-		if _paint_timer <= 0.0:
-			_paint_timer = PAINT_INTERVAL
-			_apply_tool(iso_map.hovered, false)
+		# Drag-painting for terrain tools and zones.
+		var tool := iso_map.selected_tool
+		var paintable := tool in [IsoMap.RAISE, IsoMap.LOWER, IsoMap.LEVEL, IsoMap.DOZER, IsoMap.DEZONE] \
+				or iso_map.is_zone_tool(tool)
+		if _painting and paintable:
+			_paint_timer -= delta
+			if _paint_timer <= 0.0:
+				_paint_timer = PAINT_INTERVAL
+				_apply_tool(iso_map.hovered, false)
 
 	# Zone growth: buildings appear on zoned cells by themselves.
+	# (independent of the mouse — hovering UI must not pause the city)
+	if menu_mode or hud.is_paused():
+		return
 	_growth_timer -= delta
 	if _growth_timer <= 0.0:
 		_growth_timer = GROWTH_INTERVAL
@@ -91,7 +113,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _apply_tool(cell: Vector2i, play_fail: bool) -> void:
-	if not iso_map.in_bounds(cell):
+	if menu_mode or not iso_map.in_bounds(cell):
 		return
 	match iso_map.selected_tool:
 		IsoMap.RAISE:
@@ -134,7 +156,10 @@ func _place_demo_village() -> void:
 	]
 	for placement: Array in placements:
 		_place_near(placement[0], placement[1])
-	# Zone patches: buildings will grow on them during the demo.
+	# Zone patches: level the ground first so buildings can grow, then paint.
+	for x in range(38, 44):
+		for y in range(52, 63):
+			iso_map.level_terrain(Vector2i(x, y))
 	for x in range(38, 44):
 		for y in range(52, 56):
 			iso_map.paint_zone(Vector2i(x, y), "zone_residential_medium")

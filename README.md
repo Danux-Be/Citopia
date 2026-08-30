@@ -10,11 +10,15 @@
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 [![Engine: Godot 4.7](https://img.shields.io/badge/Engine-Godot%204.7-478CBF.svg)](https://godotengine.org)
 [![Platform: Linux](https://img.shields.io/badge/Platform-Linux-fcc624.svg)](#quick-start)
-[![Status: v0.4](https://img.shields.io/badge/Status-v0.4%20--%20zones-orange.svg)](#roadmap)
+[![Status: v0.5](https://img.shields.io/badge/Status-v0.5%20--%20ui-orange.svg)](#roadmap)
 
-<img src="docs/screenshots/village.png" alt="A small village in Citopia: road, houses, shop, industry and the build bar" width="860"/>
+<img src="docs/screenshots/game-hud.png" alt="Citopia in-game: HUD with date, speed, population, funds and RCI indicator, zones and a growing city" width="860"/>
 
-*A small village built with v0.2 — road, 1×1 and 2×2 houses, shop, industry, flora, build bar at the bottom*
+*In-game HUD (v0.5): date & speed controls, population, funds, RCI indicator, minimap — and a downtown that grew on its residential zone.*
+
+<img src="docs/screenshots/map-editor.png" alt="The map editor: seed, size, terrain sliders with live regeneration" width="860"/>
+
+*The map editor at startup: seed, size, Hills / Water / Trees sliders with live regeneration, then Found City.*
 
 </div>
 
@@ -48,6 +52,12 @@ open, on a modern and moddable engine.
 - 🏘️ **RCI zoning**: paint residential/commercial/industrial zones and
   watch buildings grow on their own (1×1 buildings from the 500+ database
   entries), de-zone tool, bulldozer clears buildings and zones
+- 🖥️ **Game UI**: top bar with in-game date and pause/speed controls,
+  live population and funds, mini RCI indicator, minimap with camera
+  viewport (click to jump), build bar with category tabs browsing the
+  **whole 827-tile database**
+- 🗺️ **Map editor** at startup: seed, map size (48/96/192), Hills /
+  Water / Trees sliders with live regeneration — then Found City
 - 🎛️ **Build bar** with icons extracted from the sprite sheets
 - 🎵 **Original soundtracks**: shuffled playlist of the Cytopia OST
 - 🎥 **Smooth camera**: keyboard panning, cursor-centered mouse-wheel zoom,
@@ -59,7 +69,9 @@ open, on a modern and moddable engine.
 - [x] Tile hover, highlighting, place/demolish (the sandbox)
 - [x] Audio: original playlist and sounds
 - [x] RCI zones that grow buildings on their own
-- [ ] Simulation: RCI demand, population, economy
+- [x] Map editor (seed, size, terrain sliders, live preview)
+- [x] Game HUD: date, speed, population, funds, minimap
+- [ ] Simulation: RCI demand, taxes
 - [ ] Automatic roads
 - [ ] Mod support (the DNA of the original Cytopia project)
 

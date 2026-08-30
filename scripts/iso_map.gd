@@ -31,6 +31,10 @@ var _hover_valid := false
 var _rng := RandomNumberGenerator.new()
 var _growth_pool := {}       # zone id -> Array of 1x1 building tile ids
 
+signal stats_changed
+var _population := 0
+var _funds := 20000
+
 
 class Cell:
 	var terrain := ""            # terrain tile id
@@ -70,39 +74,74 @@ func _build_growth_pool() -> void:
 
 # -- Terrain generation ---------------------------------------------------
 
-func generate_map() -> void:
+## Generates the terrain. Optional parameters (used by the map editor):
+##   seed: int          noise seed
+##   size: int          map side in tiles
+##   water_pct: 0..100  share of the map under water
+##   hills_pct: 0..100  how high/hilly the land gets
+##   trees_pct: 0..100  forest density
+func generate_map(params: Dictionary = {}) -> void:
+	var seed_value: int = params.get("seed", 1234)
+	if params.has("size"):
+		map_size = int(params.size)
+	var water_pct: float = params.get("water_pct", 28.0)
+	var hills_pct: float = params.get("hills_pct", 50.0)
+	var trees_pct: float = params.get("trees_pct", 50.0)
+
 	var elevation := FastNoiseLite.new()
-	elevation.seed = 1234
+	elevation.seed = seed_value
 	elevation.frequency = 0.045
 	var moisture := FastNoiseLite.new()
-	moisture.seed = 5678
+	moisture.seed = seed_value + 1
 	moisture.frequency = 0.07
 
 	_cells.clear()
 	_cells.resize(map_size * map_size)
 
+	# thresholds derived from the editor percentages
+	var water_cut := _water_cut(water_pct / 100.0)
+	var tree_cut := lerpf(0.9, -0.2, trees_pct / 100.0)
+	var hill_rich := lerpf(0.15, 0.65, hills_pct / 100.0)
+
 	for y in map_size:
 		for x in map_size:
 			var cell := Cell.new()
 			var e := elevation.get_noise_2d(x, y)
-			# Water level at 0; hills terraced 1..4 from the same noise field.
-			cell.height = _elevation_level(e)
-			cell.terrain = _pick_terrain(e, moisture.get_noise_2d(x, y))
+			cell.height = _elevation_level(e, water_cut, hill_rich)
+			cell.terrain = _pick_terrain(e, moisture.get_noise_2d(x, y), water_cut, tree_cut)
 			cell.terrain_variant = catalog.pick_variant(catalog.get_tile(cell.terrain))
 			_cells[x + y * map_size] = cell
 
 	_enforce_terraces()
+	_population = 0
 	queue_redraw()
 
 
-func _elevation_level(e: float) -> int:
-	if e < -0.32:
+## Fraction of the map under water -> noise cut, calibrated on FastNoiseLite
+## (seed 1234, frequency 0.045) over a 96x96 sample.
+func _water_cut(fraction: float) -> float:
+	var curve := [
+		[0.0, -0.5], [0.05, -0.45], [0.1, -0.4], [0.15, -0.35], [0.2, -0.3],
+		[0.28, -0.2], [0.37, -0.1], [0.52, 0.0], [0.67, 0.1], [0.79, 0.2],
+		[0.9, 0.3], [1.0, 0.45],
+	]
+	var f := clampf(fraction, 0.0, 1.0)
+	for i in range(1, curve.size()):
+		if f <= curve[i][0]:
+			var t: float = (f - curve[i - 1][0]) / (curve[i][0] - curve[i - 1][0])
+			return lerpf(curve[i - 1][1], curve[i][1], t)
+	return curve[-1][1]
+
+
+func _elevation_level(e: float, water_cut: float, hill_rich: float) -> int:
+	if e < water_cut:
 		return 0  # water level
-	if e < 0.0:
+	var land := (e - water_cut) / maxf(0.001, 1.0 - water_cut)  # 0..1 above water
+	if land < hill_rich * 0.35:
 		return 1
-	if e < 0.28:
+	if land < hill_rich * 0.65:
 		return 2
-	if e < 0.5:
+	if land < hill_rich:
 		return 3
 	return 4
 
@@ -122,14 +161,14 @@ func generate_flat(size: int, base_height: int) -> void:
 	queue_redraw()
 
 
-func _pick_terrain(elevation: float, moisture: float) -> String:
-	if elevation < -0.32:
+func _pick_terrain(elevation: float, moisture: float, water_cut: float, tree_cut: float) -> String:
+	if elevation < water_cut:
 		return "water"
-	if elevation < -0.24:
+	if elevation < water_cut + 0.08:
 		return "terrain_sand_beach"
-	if moisture > 0.42:
+	if moisture > tree_cut:
 		return "terrain_grass_forest"
-	if moisture < -0.42:
+	if moisture < tree_cut - 0.84:
 		return "terrain_grass_mint"
 	return "terrain_grass"
 
@@ -303,6 +342,9 @@ func place(tile_id: String, origin: Vector2i) -> bool:
 			cell.obj_variant = variant
 			cell.obj_origin = origin
 			cell.obj_size = size
+	_population += int(tile.get("inhabitants", 0))
+	_funds -= int(tile.get("price", 0))
+	stats_changed.emit()
 	queue_redraw()
 	return true
 
@@ -313,14 +355,37 @@ func demolish(cell: Vector2i) -> bool:
 		return false
 	var obj_origin: Vector2i = _cell(cell).obj_origin
 	var size: Vector2i = _cell(cell).obj_size
+	var demolished := catalog.get_tile(_cell(obj_origin).obj)
 	for dx in size.x:
 		for dy in size.y:
 			var c := _cell(obj_origin + Vector2i(dx, dy))
 			c.obj = ""
 			c.obj_origin = Vector2i()
 			c.obj_size = Vector2i.ONE
+	_population -= int(demolished.get("inhabitants", 0))
+	stats_changed.emit()
 	queue_redraw()
 	return true
+
+
+func terrain_at(cell: Vector2i) -> String:
+	return _cell(cell).terrain if in_bounds(cell) else ""
+
+
+func zone_at(cell: Vector2i) -> String:
+	return _cell(cell).zone if in_bounds(cell) else ""
+
+
+func obj_at(cell: Vector2i) -> String:
+	return _cell(cell).obj if in_bounds(cell) else ""
+
+
+func get_population() -> int:
+	return _population
+
+
+func get_funds() -> int:
+	return _funds
 
 
 # -- Zoning ----------------------------------------------------------------

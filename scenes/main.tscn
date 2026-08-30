@@ -1,10 +1,12 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://scripts/game.gd" id="1_game"]
 [ext_resource type="Script" path="res://scripts/iso_map.gd" id="2_isomap"]
 [ext_resource type="Script" path="res://scripts/game_camera.gd" id="3_camera"]
 [ext_resource type="Script" path="res://scripts/build_bar.gd" id="4_buildbar"]
 [ext_resource type="Script" path="res://scripts/music_player.gd" id="5_music"]
+[ext_resource type="Script" path="res://scripts/hud.gd" id="6_hud"]
+[ext_resource type="Script" path="res://scripts/map_editor.gd" id="7_mapeditor"]
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1_game")
@@ -17,6 +19,12 @@ script = ExtResource("3_camera")
 
 [node name="BuildBar" type="CanvasLayer" parent="."]
 script = ExtResource("4_buildbar")
+
+[node name="HUD" type="CanvasLayer" parent="."]
+script = ExtResource("6_hud")
+
+[node name="MapEditor" type="CanvasLayer" parent="."]
+script = ExtResource("7_mapeditor")
 
 [node name="MusicPlayer" type="Node" parent="."]
 script = ExtResource("5_music")
