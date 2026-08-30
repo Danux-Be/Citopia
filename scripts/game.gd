@@ -4,6 +4,8 @@ extends Node2D
 ## Terrain tools paint while the left button is held down.
 
 const PAINT_INTERVAL := 0.12  # seconds between two raise/lower/level stamps
+const GROWTH_INTERVAL := 1.2  # seconds between two zone growth ticks
+const GROWTH_PER_TICK := 3    # buildings spawned per tick
 
 @onready var iso_map: IsoMap = $IsoMap
 @onready var build_bar: CanvasLayer = $BuildBar
@@ -11,6 +13,7 @@ const PAINT_INTERVAL := 0.12  # seconds between two raise/lower/level stamps
 var _fail_stream: AudioStream
 var _painting := false
 var _paint_timer := 0.0
+var _growth_timer := 0.0
 var _demo_steps: Array = []
 var _demo_index := 0
 var _demo_accum := 0.0
@@ -56,12 +59,21 @@ func _process(delta: float) -> void:
 		return
 	iso_map.set_hovered(iso_map.screen_to_iso(iso_map.get_local_mouse_position()))
 
-	# Drag-painting for terrain tools.
-	if _painting and iso_map.selected_tool in [IsoMap.RAISE, IsoMap.LOWER, IsoMap.LEVEL, IsoMap.DOZER]:
+	# Drag-painting for terrain tools and zones.
+	var tool := iso_map.selected_tool
+	var paintable := tool in [IsoMap.RAISE, IsoMap.LOWER, IsoMap.LEVEL, IsoMap.DOZER, IsoMap.DEZONE] \
+			or iso_map.is_zone_tool(tool)
+	if _painting and paintable:
 		_paint_timer -= delta
 		if _paint_timer <= 0.0:
 			_paint_timer = PAINT_INTERVAL
 			_apply_tool(iso_map.hovered, false)
+
+	# Zone growth: buildings appear on zoned cells by themselves.
+	_growth_timer -= delta
+	if _growth_timer <= 0.0:
+		_growth_timer = GROWTH_INTERVAL
+		iso_map.grow_zones(GROWTH_PER_TICK)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -89,11 +101,17 @@ func _apply_tool(cell: Vector2i, play_fail: bool) -> void:
 		IsoMap.LEVEL:
 			iso_map.level_terrain(cell)
 		IsoMap.DOZER:
-			iso_map.demolish(cell)
+			# remove the building first, then the zone underneath
+			if not iso_map.demolish(cell):
+				iso_map.clear_zone(cell)
+		IsoMap.DEZONE:
+			iso_map.clear_zone(cell)
 		"":
 			pass
 		_:
-			if not iso_map.place(iso_map.selected_tool, cell) and play_fail:
+			if iso_map.is_zone_tool(iso_map.selected_tool):
+				iso_map.paint_zone(cell, iso_map.selected_tool)
+			elif not iso_map.place(iso_map.selected_tool, cell) and play_fail:
 				$FailSound.stream = _fail_stream
 				$FailSound.play()
 
@@ -116,6 +134,16 @@ func _place_demo_village() -> void:
 	]
 	for placement: Array in placements:
 		_place_near(placement[0], placement[1])
+	# Zone patches: buildings will grow on them during the demo.
+	for x in range(38, 44):
+		for y in range(52, 56):
+			iso_map.paint_zone(Vector2i(x, y), "zone_residential_medium")
+	for x in range(45, 49):
+		for y in range(52, 55):
+			iso_map.paint_zone(Vector2i(x, y), "zone_commercial_medium")
+	for x in range(50, 55):
+		for y in range(52, 55):
+			iso_map.paint_zone(Vector2i(x, y), "zone_industrial_medium")
 
 
 ## Places a tile at `center`, or on the closest valid cell nearby.

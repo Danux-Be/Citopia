@@ -10,7 +10,7 @@
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 [![Engine: Godot 4.7](https://img.shields.io/badge/Engine-Godot%204.7-478CBF.svg)](https://godotengine.org)
 [![Platform: Linux](https://img.shields.io/badge/Platform-Linux-fcc624.svg)](#quick-start)
-[![Status: v0.3](https://img.shields.io/badge/Status-v0.3%20--%20terrain-orange.svg)](#roadmap)
+[![Status: v0.4](https://img.shields.io/badge/Status-v0.4%20--%20zones-orange.svg)](#roadmap)
 
 <img src="docs/screenshots/village.png" alt="A small village in Citopia: road, houses, shop, industry and the build bar" width="860"/>
 
@@ -45,7 +45,10 @@ open, on a modern and moddable engine.
   slope sprites decoded from the legacy sheets, hand-drawn textured cliff
   walls, raise/lower/level tools with drag-painting, animated showcase
   (`godot scenes/main.tscn ++ --demo-elevation`)
-- 🎛️ **Build bar** with icons extracted from the sprite sheets + bulldozer
+- 🏘️ **RCI zoning**: paint residential/commercial/industrial zones and
+  watch buildings grow on their own (1×1 buildings from the 500+ database
+  entries), de-zone tool, bulldozer clears buildings and zones
+- 🎛️ **Build bar** with icons extracted from the sprite sheets
 - 🎵 **Original soundtracks**: shuffled playlist of the Cytopia OST
 - 🎥 **Smooth camera**: keyboard panning, cursor-centered mouse-wheel zoom,
   drag to pan
@@ -55,8 +58,9 @@ open, on a modern and moddable engine.
 
 - [x] Tile hover, highlighting, place/demolish (the sandbox)
 - [x] Audio: original playlist and sounds
+- [x] RCI zones that grow buildings on their own
 - [ ] Simulation: RCI demand, population, economy
-- [ ] Automatic roads, residential/commercial/industrial zones
+- [ ] Automatic roads
 - [ ] Mod support (the DNA of the original Cytopia project)
 
 ## Quick start
@@ -77,7 +81,7 @@ godot scenes/main.tscn  # or run directly
 | Pan the map | right or middle mouse drag |
 | Select a tool | click it in the build bar |
 | Build / demolish | left-click on the map |
-| Raise / lower / level terrain | hold left-click to paint |
+| Paint zones / terrain | hold left-click to paint |
 | Clear the tool | <kbd>ESC</kbd> |
 
 ## Architecture

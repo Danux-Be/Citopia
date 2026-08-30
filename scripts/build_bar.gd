@@ -14,7 +14,14 @@ const TOOLS: Array[String] = [
 	"bush_green_dense",
 	"ND_1x1_Pond",
 ]
+## Zones grow buildings on their own.
+const ZONES: Array[String] = [
+	"zone_residential_medium",
+	"zone_commercial_medium",
+	"zone_industrial_medium",
+]
 const DOZER_ICON := "res://assets/images/ui/buttons/demolish.png"
+const DEZONE_ICON := "res://assets/images/ui/buttons/dezone.png"
 const RAISE_ICON := "res://assets/images/ui/buttons/raiseTerrain.png"
 const LOWER_ICON := "res://assets/images/ui/buttons/lowerTerrain.png"
 const LEVEL_ICON := "res://assets/images/ui/buttons/levelTerrain.png"
@@ -50,10 +57,22 @@ func _build_ui() -> void:
 		_bar.add_child(_make_tool_button(tile_id, _make_icon(tile), tile.get("title", tile_id)))
 
 	_bar.add_child(VSeparator.new())
+	for zone_id: String in ZONES:
+		var zone_tile := _catalog.get_tile(zone_id)
+		if zone_tile.is_empty():
+			push_warning("Toolbar zone not found: %s" % zone_id)
+			continue
+		var zone_label: String = zone_tile.get("title", zone_id)
+		_bar.add_child(_make_tool_button(
+			zone_id, _make_icon(zone_tile),
+			"%s — paint it, buildings grow on their own" % zone_label))
+
+	_bar.add_child(VSeparator.new())
 	_bar.add_child(_make_tool_button(IsoMap.RAISE, load(RAISE_ICON), "Raise terrain — hold left click to paint"))
 	_bar.add_child(_make_tool_button(IsoMap.LOWER, load(LOWER_ICON), "Lower terrain — hold left click to paint"))
 	_bar.add_child(_make_tool_button(IsoMap.LEVEL, load(LEVEL_ICON), "Level terrain up to the clicked height"))
-	_bar.add_child(_make_tool_button(IsoMap.DOZER, load(DOZER_ICON), "Bulldozer — remove buildings"))
+	_bar.add_child(_make_tool_button(IsoMap.DOZER, load(DOZER_ICON), "Bulldozer — remove buildings and zones"))
+	_bar.add_child(_make_tool_button(IsoMap.DEZONE, load(DEZONE_ICON), "De-zone — remove zoning only"))
 
 	add_child(panel)
 

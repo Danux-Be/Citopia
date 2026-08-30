@@ -15,6 +15,10 @@ const DOZER := "&dozer"
 const RAISE := "&raise"
 const LOWER := "&lower"
 const LEVEL := "&level"
+const DEZONE := "&dezone"
+
+## Zones grow buildings on their own. Zone tile ids start with this prefix.
+const ZONE_PREFIX := "zone_"
 
 @export var map_size: int = 96
 
@@ -25,12 +29,14 @@ var selected_tool := ""      # tile id, a pseudo tool, or "" (no tool)
 var _cells: Array[Cell] = []
 var _hover_valid := false
 var _rng := RandomNumberGenerator.new()
+var _growth_pool := {}       # zone id -> Array of 1x1 building tile ids
 
 
 class Cell:
 	var terrain := ""            # terrain tile id
 	var terrain_variant := 0     # index among the flat variants
 	var height := 0              # elevation level (terraced, ±1 per step)
+	var zone := ""               # zone tile id painted on this cell ("" = none)
 	var obj := ""                # object tile id covering this cell ("" = none)
 	var obj_variant := 0
 	var obj_origin := Vector2i() # origin cell of the object covering this cell
@@ -41,6 +47,25 @@ func _ready() -> void:
 	_rng.seed = 20260829
 	catalog = TileCatalog.new()
 	generate_map()
+	_build_growth_pool()
+
+
+## Maps each zone tile to the pool of 1x1 buildings that can grow on it
+## (residential/commercial/industrial zones → buildings of that category).
+func _build_growth_pool() -> void:
+	var zone_categories := {
+		"zone_residential_medium": "Residential",
+		"zone_commercial_medium": "Commercial",
+		"zone_industrial_medium": "Industrial",
+	}
+	for zone_id: String in zone_categories:
+		var pool: Array[String] = []
+		for id in catalog.get_ids_by_category(zone_categories[zone_id]):
+			var tile := catalog.get_tile(id)
+			var size := tile_size(tile)
+			if size == Vector2i.ONE:
+				pool.append(id)
+		_growth_pool[zone_id] = pool
 
 
 # -- Terrain generation ---------------------------------------------------
@@ -298,6 +323,61 @@ func demolish(cell: Vector2i) -> bool:
 	return true
 
 
+# -- Zoning ----------------------------------------------------------------
+
+func is_zone_tool(tool_id: String) -> bool:
+	return tool_id.begins_with(ZONE_PREFIX)
+
+
+## Paints a zone on one cell (land only, no building on top).
+func paint_zone(cell: Vector2i, zone_id: String) -> bool:
+	if not in_bounds(cell):
+		return false
+	var c := _cell(cell)
+	if c.terrain == "water" or c.obj != "":
+		return false
+	if c.zone == zone_id:
+		return false
+	c.zone = zone_id
+	queue_redraw()
+	return true
+
+
+## Removes the zone from one cell.
+func clear_zone(cell: Vector2i) -> bool:
+	if not in_bounds(cell) or _cell(cell).zone == "":
+		return false
+	_cell(cell).zone = ""
+	queue_redraw()
+	return true
+
+
+## Growth tick: a few random zoned empty cells spawn a matching building.
+## Buildings only grow on flat, buildable ground (the usual placement rules).
+func grow_zones(max_spawns: int = 3) -> void:
+	var candidates: Array[Vector2i] = []
+	for y in map_size:
+		for x in map_size:
+			var cell_pos := Vector2i(x, y)
+			var zone_id: String = _cell(cell_pos).zone
+			if zone_id != "" and _cell(cell_pos).obj == "":
+				candidates.append(cell_pos)
+	if candidates.is_empty():
+		return
+	candidates.shuffle()
+	var spawned := 0
+	for cell_pos in candidates:
+		if spawned >= max_spawns:
+			break
+		var zone_id: String = _cell(cell_pos).zone
+		var pool: Array = _growth_pool.get(zone_id, [])
+		if pool.is_empty():
+			continue
+		var building: String = pool[_rng.randi_range(0, pool.size() - 1)]
+		if place(building, cell_pos):
+			spawned += 1
+
+
 # -- Hover ----------------------------------------------------------------
 
 func set_hovered(cell: Vector2i) -> bool:
@@ -314,10 +394,14 @@ func _update_hover_validity() -> bool:
 		return false
 	match selected_tool:
 		DOZER:
-			return _cell(hovered).obj != ""
+			return _cell(hovered).obj != "" or _cell(hovered).zone != ""
+		DEZONE:
+			return _cell(hovered).zone != ""
 		RAISE, LOWER, LEVEL:
 			return _cell(hovered).terrain != "water"
 		_:
+			if is_zone_tool(selected_tool):
+				return _cell(hovered).terrain != "water" and _cell(hovered).obj == ""
 			return can_place(selected_tool, hovered)
 
 
@@ -336,6 +420,8 @@ func _draw() -> void:
 			var y := sum - x
 			var cell := _cell(Vector2i(x, y))
 			_draw_terrain(Vector2i(x, y), cell)
+			if cell.zone != "":
+				_draw_zone(Vector2i(x, y), cell)
 			if cell.obj != "" and cell.obj_origin == Vector2i(x, y):
 				_draw_object(cell)
 
@@ -488,6 +574,17 @@ func _slope_frame(cell_pos: Vector2i, cell: Cell) -> TileCatalog.SlopeFrame:
 	if higher_w:
 		return TileCatalog.SlopeFrame.NW_RAMP_A if cell.terrain_variant % 2 == 0 else TileCatalog.SlopeFrame.NW_RAMP_B
 	return TileCatalog.SlopeFrame.NONE
+
+
+## Zone overlay: drawn lifted with the tile, under any building.
+func _draw_zone(cell_pos: Vector2i, cell: Cell) -> void:
+	var tile := catalog.get_tile(cell.zone)
+	var texture := catalog.get_texture(tile)
+	if texture == null:
+		return
+	var region := catalog.get_region(tile, texture.get_height(), 0)
+	var screen_pos := cell_screen_pos(cell_pos)
+	draw_texture_rect_region(texture, catalog.get_draw_rect(region, screen_pos, TILE_H), region)
 
 
 func _draw_object(cell: Cell) -> void:
