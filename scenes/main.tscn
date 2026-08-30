@@ -1,25 +1,37 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=6 format=3]
 
-[ext_resource type="Script" path="res://scripts/iso_map.gd" id="1_isomap"]
-[ext_resource type="Script" path="res://scripts/game_camera.gd" id="2_camera"]
+[ext_resource type="Script" path="res://scripts/game.gd" id="1_game"]
+[ext_resource type="Script" path="res://scripts/iso_map.gd" id="2_isomap"]
+[ext_resource type="Script" path="res://scripts/game_camera.gd" id="3_camera"]
+[ext_resource type="Script" path="res://scripts/build_bar.gd" id="4_buildbar"]
+[ext_resource type="Script" path="res://scripts/music_player.gd" id="5_music"]
 
 [node name="Main" type="Node2D"]
+script = ExtResource("1_game")
 
 [node name="IsoMap" type="Node2D" parent="."]
-script = ExtResource("1_isomap")
+script = ExtResource("2_isomap")
 
 [node name="GameCamera" type="Camera2D" parent="."]
-script = ExtResource("2_camera")
+script = ExtResource("3_camera")
+
+[node name="BuildBar" type="CanvasLayer" parent="."]
+script = ExtResource("4_buildbar")
+
+[node name="MusicPlayer" type="Node" parent="."]
+script = ExtResource("5_music")
+
+[node name="FailSound" type="AudioStreamPlayer" parent="."]
 
 [node name="UI" type="CanvasLayer" parent="."]
 
 [node name="Help" type="Label" parent="UI"]
 offset_left = 12.0
 offset_top = 10.0
-offset_right = 640.0
+offset_right = 720.0
 offset_bottom = 60.0
 theme_override_colors/font_color = Color(1, 1, 1, 0.85)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 0.8)
 theme_override_constants/outline_size = 4
-text = "Citopia 0.1 — WASD/arrows: camera · mouse wheel: zoom · right-click drag: pan
-96x96 map generated from the Cytopia tile database (GPL)"
+text = "Citopia 0.2 — WASD/arrows: camera · wheel: zoom · right-drag: pan
+Pick a tool below, left-click to build, ESC to clear the tool"

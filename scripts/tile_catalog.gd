@@ -63,20 +63,27 @@ func get_texture(tile: Dictionary) -> Texture2D:
 	return _textures.get(file_name)
 
 
-## Clip region for one variant of a tile (random if the tile allows it).
+## Picks a stable variant index for a tile (random if the tile allows it).
+## Store the result and pass it to get_region() so variants don't reshuffle
+## on every redraw.
+func pick_variant(tile: Dictionary) -> int:
+	var tiles: Dictionary = tile.get("tiles", {})
+	var count: int = int(tiles.get("count", 1))
+	if tiles.get("pickRandomTile", false) and count > 1:
+		return _rng.randi_range(0, count - 1)
+	return 0
+
+
+## Clip region for one variant of a tile.
 ## Strips are bottom-anchored: the clip sits at the BOTTOM of the sheet, the
 ## pixels above it are elevation headroom (legacy Sprite::refresh behavior).
-func get_region(tile: Dictionary, texture_height: int, variant: int = -1) -> Rect2:
+func get_region(tile: Dictionary, texture_height: int, variant: int = 0) -> Rect2:
 	var tiles: Dictionary = tile.get("tiles", {})
 	var clip_w: int = int(tiles.get("clip_width", 32))
 	var clip_h: int = int(tiles.get("clip_height", 16))
 	var offset: int = int(tiles.get("offset", 0))
 	var count: int = int(tiles.get("count", 1))
-	if variant < 0:
-		if tiles.get("pickRandomTile", false) and count > 1:
-			variant = _rng.randi_range(0, count - 1)
-		else:
-			variant = 0
+	variant = clampi(variant, 0, maxi(0, count - 1))
 	var region_x := (offset + variant) * clip_w
 	var region_y := maxi(0, texture_height - clip_h)
 	return Rect2(region_x, region_y, clip_w, clip_h)
