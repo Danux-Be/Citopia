@@ -11,6 +11,7 @@
 [![Engine: Godot 4.7](https://img.shields.io/badge/Engine-Godot%204.7-478CBF.svg)](https://godotengine.org)
 [![Platform: Linux](https://img.shields.io/badge/Platform-Linux-fcc624.svg)](#quick-start)
 [![Status: v0.5](https://img.shields.io/badge/Status-v0.5%20--%20ui-orange.svg)](#roadmap)
+[![Discord](https://img.shields.io/badge/Discord-Join%20us-5865F2.svg?logo=discord&logoColor=white)](https://discord.gg/FEUf6EwKbd)
 
 <img src="docs/screenshots/game-hud.png" alt="Citopia in-game: HUD with date, speed, population, funds and RCI indicator, zones and a growing city" width="860"/>
 
@@ -117,6 +118,13 @@ The legacy tile format is reused as-is: every sprite is a **horizontal
 strip** of 32 px-wide variants, addressed by `offset + variant`, with the
 clip anchored to the bottom of the sheet (the area above it is elevation
 headroom).
+
+## Community 💬
+
+Join the Citopia Discord to follow development, share your cities and
+suggest features:
+
+**→ [discord.gg/FEUf6EwKbd](https://discord.gg/FEUf6EwKbd)**
 
 ## Contributing
 
