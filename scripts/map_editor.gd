@@ -110,7 +110,7 @@ func _build_ui() -> void:
 
 	# terrain sliders
 	vbox.add_child(_slider_row("hills", "Hills", 50.0))
-	vbox.add_child(_slider_row("water", "Water", 28.0))
+	vbox.add_child(_slider_row("water", "Water", 22.0))
 	vbox.add_child(_slider_row("trees", "Trees", 50.0))
 
 	add_child(panel)

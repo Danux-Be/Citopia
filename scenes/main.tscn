@@ -1,39 +1,39 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene format=3 uid="uid://kytrybpiotci"]
 
-[ext_resource type="Script" path="res://scripts/game.gd" id="1_game"]
-[ext_resource type="Script" path="res://scripts/iso_map.gd" id="2_isomap"]
-[ext_resource type="Script" path="res://scripts/game_camera.gd" id="3_camera"]
-[ext_resource type="Script" path="res://scripts/build_bar.gd" id="4_buildbar"]
-[ext_resource type="Script" path="res://scripts/music_player.gd" id="5_music"]
-[ext_resource type="Script" path="res://scripts/hud.gd" id="6_hud"]
-[ext_resource type="Script" path="res://scripts/map_editor.gd" id="7_mapeditor"]
+[ext_resource type="Script" uid="uid://ggab7d5ptmwp" path="res://scripts/game.gd" id="1_game"]
+[ext_resource type="Script" uid="uid://cq7x3fwbgdp54" path="res://scripts/iso_map.gd" id="2_isomap"]
+[ext_resource type="Script" uid="uid://dmb1gmn7lcfc8" path="res://scripts/game_camera.gd" id="3_camera"]
+[ext_resource type="Script" uid="uid://cskc8p1uu8i86" path="res://scripts/build_bar.gd" id="4_buildbar"]
+[ext_resource type="Script" uid="uid://djf0lsrwg8u4r" path="res://scripts/music_player.gd" id="5_music"]
+[ext_resource type="Script" uid="uid://46e6wivu2ocr" path="res://scripts/hud.gd" id="6_hud"]
+[ext_resource type="Script" uid="uid://drenhglkotgdn" path="res://scripts/map_editor.gd" id="7_mapeditor"]
 
-[node name="Main" type="Node2D"]
+[node name="Main" type="Node2D" unique_id=2035455002]
 script = ExtResource("1_game")
 
-[node name="IsoMap" type="Node2D" parent="."]
+[node name="IsoMap" type="Node2D" parent="." unique_id=36117786]
 script = ExtResource("2_isomap")
 
-[node name="GameCamera" type="Camera2D" parent="."]
+[node name="GameCamera" type="Camera2D" parent="." unique_id=571458639]
 script = ExtResource("3_camera")
 
-[node name="BuildBar" type="CanvasLayer" parent="."]
+[node name="BuildBar" type="CanvasLayer" parent="." unique_id=84159443]
 script = ExtResource("4_buildbar")
 
-[node name="HUD" type="CanvasLayer" parent="."]
+[node name="HUD" type="CanvasLayer" parent="." unique_id=111011523]
 script = ExtResource("6_hud")
 
-[node name="MapEditor" type="CanvasLayer" parent="."]
+[node name="MapEditor" type="CanvasLayer" parent="." unique_id=1907179961]
 script = ExtResource("7_mapeditor")
 
-[node name="MusicPlayer" type="Node" parent="."]
+[node name="MusicPlayer" type="Node" parent="." unique_id=1790151313]
 script = ExtResource("5_music")
 
-[node name="FailSound" type="AudioStreamPlayer" parent="."]
+[node name="FailSound" type="AudioStreamPlayer" parent="." unique_id=1777721568]
 
-[node name="UI" type="CanvasLayer" parent="."]
+[node name="UI" type="CanvasLayer" parent="." unique_id=2124899839]
 
-[node name="Help" type="Label" parent="UI"]
+[node name="Help" type="Label" parent="UI" unique_id=1741533389]
 offset_left = 12.0
 offset_top = 10.0
 offset_right = 720.0

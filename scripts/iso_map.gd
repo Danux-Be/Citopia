@@ -164,7 +164,7 @@ func generate_flat(size: int, base_height: int) -> void:
 func _pick_terrain(elevation: float, moisture: float, water_cut: float, tree_cut: float) -> String:
 	if elevation < water_cut:
 		return "water"
-	if elevation < water_cut + 0.08:
+	if elevation < water_cut + 0.035:
 		return "terrain_sand_beach"
 	if moisture > tree_cut:
 		return "terrain_grass_forest"
@@ -499,69 +499,46 @@ func _draw_terrain(cell_pos: Vector2i, cell: Cell) -> void:
 	if texture == null:
 		return
 
-	# Straight rise toward a single up-screen neighbor: the legacy ramp
-	# frames are a clean green incline. Everything else: flat sprite, and
-	# every height difference renders as a green face (the other legacy
-	# frames bake brown dirt into their corners - not used).
-	var higher_n := height_at(cell_pos + Vector2i(0, -1)) > cell.height
-	var higher_w := height_at(cell_pos + Vector2i(-1, 0)) > cell.height
-	var higher_single := (higher_n and not higher_w) or (higher_w and not higher_n)
+	var pos := cell_screen_pos(cell_pos)
+	var h := cell.height
+
+	# Legacy autotile table (TileSlopes): the frame is chosen from which
+	# neighbors stand HIGHER — the art encodes the rise toward them plus the
+	# cliff face toward lower ground on the down sides.
+	var hn := height_at(cell_pos + Vector2i(0, -1)) > h
+	var hw := height_at(cell_pos + Vector2i(-1, 0)) > h
+	var he := height_at(cell_pos + Vector2i(1, 0)) > h
+	var hs := height_at(cell_pos + Vector2i(0, 1)) > h
+
+	# Priority: visible cliff faces toward lower down-screen neighbors
+	# first, then the ramps toward higher up-screen neighbors, then the
+	# far-diagonal transitions.
+	var le := height_at(cell_pos + Vector2i(1, 0)) < h
+	var ls := height_at(cell_pos + Vector2i(0, 1)) < h
+	var slot := -1
+	if le and ls: slot = 8   # double cliff SE+SW
+	elif le: slot = 0       # cliff toward down-right
+	elif ls: slot = 1       # cliff toward down-left
+	elif hn: slot = 0       # ramp rising up-right
+	elif hw: slot = 1       # ramp rising up-left
+	elif he: slot = 2       # half-step toward the down-right
+	elif hs: slot = 3       # half-step toward the down-left
+	elif height_at(cell_pos + Vector2i(-1, -1)) > h: slot = 1
+	elif height_at(cell_pos + Vector2i(1, -1)) > h: slot = 2
+	elif height_at(cell_pos + Vector2i(-1, 1)) > h: slot = 3
+	elif height_at(cell_pos + Vector2i(1, 1)) > h: slot = 4
+
 	var region: Rect2
-	if higher_single and catalog.has_slopes(tile):
-		var ramp := TileCatalog.SlopeFrame.NE_RAMP_A if higher_n else TileCatalog.SlopeFrame.NW_RAMP_A
-		region = catalog.get_slope_region(tile, ramp)
+	if slot >= 0 and catalog.has_slopes(tile) and cell.terrain != "water":
+		region = catalog.get_slope_region(tile, slot)
 	else:
 		region = catalog.get_region(tile, texture.get_height(), cell.terrain_variant)
-	var pos := cell_screen_pos(cell_pos)
-	draw_texture_rect_region(texture, catalog.get_draw_rect(region, pos, TILE_H), region)
 
-	var base := catalog.get_surface_color(tile)
-	# shared edges: N=(0,-1) up-right, W=(-1,0) up-left, E=(1,0) down-right, S=(0,1) down-left
-	for side: Vector2i in [Vector2i(0, -1), Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, 1)]:
-		var n: Vector2i = cell_pos + side
-		var diff: int = (height_at(n) - cell.height) * HEIGHT_STEP
-		if diff == 0 or (cell.terrain == "water" and diff < 0):
-			continue
-		_draw_face(cell_pos, side, cell.height, diff, base)
-
-
-## Vertical face on the shared edge with a neighbor of a different height:
-## filled with the terrain surface color, shaded per direction
-## (light from the north-west). Works for cliffs (neighbor lower) and for
-## the wall of higher ground next to us (neighbor higher).
-func _draw_face(cell_pos: Vector2i, side: Vector2i, h: int, diff: int, base: Color) -> void:
-	var p := iso_to_screen(cell_pos.x, cell_pos.y)
-	var lift := h * HEIGHT_STEP
-	var n_pt := p - Vector2(0, lift)
-	var e_pt := p + Vector2(TILE_W * 0.5, TILE_H * 0.5) - Vector2(0, lift)
-	var s_pt := p + Vector2(0, TILE_H) - Vector2(0, lift)
-	var w_pt := p + Vector2(-TILE_W * 0.5, TILE_H * 0.5) - Vector2(0, lift)
-
-	var top_a: Vector2
-	var top_b: Vector2
-	var shade := 1.0
-	match side:
-		Vector2i(0, -1):  # up-right edge (NE face)
-			top_a = n_pt; top_b = e_pt
-			shade = 0.9
-		Vector2i(-1, 0):  # up-left edge (NW face)
-			top_a = w_pt; top_b = n_pt
-			shade = 1.0
-		Vector2i(1, 0):   # down-right edge (SE face)
-			top_a = e_pt; top_b = s_pt
-			shade = 0.7
-		_:                # down-left edge (SW face)
-			top_a = s_pt; top_b = w_pt
-			shade = 0.82
-
-	var drop := absi(diff)
-	var quad := PackedVector2Array([
-		top_a, top_b,
-		top_b + Vector2(0, drop), top_a + Vector2(0, drop),
-	])
-	var col := Color(base.r * shade, base.g * shade, base.b * shade)
-	draw_colored_polygon(quad, col)
-
+	# CRITICAL anchor: 15px flats and 23px slopes share the same surface
+	# line — paste both at pos.y + 1 so slope faces extend BELOW toward the
+	# lower neighbor instead of floating a step too high.
+	var rect := Rect2(pos.x - region.size.x * 0.5, pos.y + 1, region.size.x, region.size.y)
+	draw_texture_rect_region(texture, rect, region)
 
 
 ## Zone overlay: drawn lifted with the tile, under any building.
