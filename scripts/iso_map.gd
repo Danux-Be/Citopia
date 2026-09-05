@@ -499,77 +499,39 @@ func _draw_terrain(cell_pos: Vector2i, cell: Cell) -> void:
 	if texture == null:
 		return
 
-	if cell.terrain == "water" or not catalog.has_slopes(tile):
-		# Flat variant only (liquids have no slope sheets).
-		var region := catalog.get_region(tile, texture.get_height(), cell.terrain_variant)
-		var screen_pos := cell_screen_pos(cell_pos)
-		draw_texture_rect_region(texture, catalog.get_draw_rect(region, screen_pos, TILE_H), region)
-		return
-
-	var frame := _slope_frame(cell_pos, cell)
+	# Straight rise toward a single up-screen neighbor: the legacy ramp
+	# frames are a clean green incline. Everything else: flat sprite, and
+	# every height difference renders as a green face (the other legacy
+	# frames bake brown dirt into their corners - not used).
+	var higher_n := height_at(cell_pos + Vector2i(0, -1)) > cell.height
+	var higher_w := height_at(cell_pos + Vector2i(-1, 0)) > cell.height
+	var higher_single := (higher_n and not higher_w) or (higher_w and not higher_n)
 	var region: Rect2
-	if frame == TileCatalog.SlopeFrame.NONE:
-		region = catalog.get_region(tile, texture.get_height(), cell.terrain_variant)
-		var pos := cell_screen_pos(cell_pos)
-		draw_texture_rect_region(texture, catalog.get_draw_rect(region, pos, TILE_H), region)
+	if higher_single and catalog.has_slopes(tile):
+		var ramp := TileCatalog.SlopeFrame.NE_RAMP_A if higher_n else TileCatalog.SlopeFrame.NW_RAMP_A
+		region = catalog.get_slope_region(tile, ramp)
 	else:
-		region = catalog.get_slope_region(tile, frame)
-		var pos2 := cell_screen_pos(cell_pos)
-		var rect := Rect2(pos2.x - region.size.x * 0.5, pos2.y + TILE_H - region.size.y, region.size.x, region.size.y)
-		draw_texture_rect_region(texture, rect, region)
+		region = catalog.get_region(tile, texture.get_height(), cell.terrain_variant)
+	var pos := cell_screen_pos(cell_pos)
+	draw_texture_rect_region(texture, catalog.get_draw_rect(region, pos, TILE_H), region)
 
-	# Walls on the two camera-facing sides only (down-right / down-left);
-	# the up-facing sides are back faces, occluded by the tile itself.
-	# Out-of-bounds counts as level 0 so the map edges show a clean slab.
-	var drops := {}  # side Vector2i -> depth in pixels
-	for side: Vector2i in [Vector2i(1, 0), Vector2i(0, 1)]:
+	var base := catalog.get_surface_color(tile)
+	# shared edges: N=(0,-1) up-right, W=(-1,0) up-left, E=(1,0) down-right, S=(0,1) down-left
+	for side: Vector2i in [Vector2i(0, -1), Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, 1)]:
 		var n: Vector2i = cell_pos + side
-		if height_at(n) < cell.height and _cell(cell_pos).terrain != "water":
-			var depth := (cell.height - height_at(n)) * HEIGHT_STEP
-			drops[side] = depth
-			_draw_wall(cell_pos, side, cell.height, height_at(n), texture, region)
-	_draw_corner_walls(cell_pos, cell.height, drops, texture, region)
-
-
-## Vertical corner patches: where two adjacent walls have different depths,
-## a triangular gap would show — fill it down to the deeper wall's base.
-func _draw_corner_walls(cell_pos: Vector2i, h: int, drops: Dictionary, texture: Texture2D, region: Rect2) -> void:
-	if drops.size() < 2:
-		return
-	var p := iso_to_screen(cell_pos.x, cell_pos.y)
-	var lift := h * HEIGHT_STEP
-	var n_pt := p - Vector2(0, lift)
-	var e_pt := p + Vector2(TILE_W * 0.5, TILE_H * 0.5) - Vector2(0, lift)
-	var s_pt := p + Vector2(0, TILE_H) - Vector2(0, lift)
-	var w_pt := p + Vector2(-TILE_W * 0.5, TILE_H * 0.5) - Vector2(0, lift)
-	# corner position + the two wall sides meeting there
-	var corners := [
-		[s_pt, Vector2i(1, 0), Vector2i(0, 1)],     # S corner: SE & SW faces meet here
-	]
-	for entry: Array in corners:
-		var d1: int = drops.get(entry[1], 0)
-		var d2: int = drops.get(entry[2], 0)
-		if d1 == 0 or d2 == 0 or d1 == d2:
+		var diff: int = (height_at(n) - cell.height) * HEIGHT_STEP
+		if diff == 0 or (cell.terrain == "water" and diff < 0):
 			continue
-		var corner: Vector2 = entry[0]
-		var shallow := minf(d1, d2)
-		var deep := maxf(d1, d2)
-		var shade := 0.45  # deep shade: reads as the dark side of the corner
-		var col := Color(shade, shade, shade)
-		draw_colored_polygon(
-			PackedVector2Array([corner, corner + Vector2(0, deep), corner + Vector2(0, shallow)]),
-			col
-		)
+		_draw_face(cell_pos, side, cell.height, diff, base)
 
 
-## Vertical cliff face between our surface edge and a lower neighbor,
-## textured from the tile sheet and darkened per direction (light from NW).
-## UVs are mapped inside `region` (the frame's slot on the sheet).
-func _draw_wall(cell_pos: Vector2i, side: Vector2i, h: int, hn: int, texture: Texture2D, region: Rect2) -> void:
+## Vertical face on the shared edge with a neighbor of a different height:
+## filled with the terrain surface color, shaded per direction
+## (light from the north-west). Works for cliffs (neighbor lower) and for
+## the wall of higher ground next to us (neighbor higher).
+func _draw_face(cell_pos: Vector2i, side: Vector2i, h: int, diff: int, base: Color) -> void:
 	var p := iso_to_screen(cell_pos.x, cell_pos.y)
 	var lift := h * HEIGHT_STEP
-	var lift_n := hn * HEIGHT_STEP
-	# Diamond corners of this cell (P is the north corner).
 	var n_pt := p - Vector2(0, lift)
 	var e_pt := p + Vector2(TILE_W * 0.5, TILE_H * 0.5) - Vector2(0, lift)
 	var s_pt := p + Vector2(0, TILE_H) - Vector2(0, lift)
@@ -577,76 +539,29 @@ func _draw_wall(cell_pos: Vector2i, side: Vector2i, h: int, hn: int, texture: Te
 
 	var top_a: Vector2
 	var top_b: Vector2
-	var uv_a: Vector2
-	var uv_b: Vector2
 	var shade := 1.0
-
 	match side:
-		Vector2i(0, -1):  # north neighbor -> north-east face
+		Vector2i(0, -1):  # up-right edge (NE face)
 			top_a = n_pt; top_b = e_pt
-			uv_a = Vector2(16, 8); uv_b = Vector2(31, 15)
-			shade = 0.72
-		Vector2i(-1, 0):  # west neighbor -> north-west face
+			shade = 0.9
+		Vector2i(-1, 0):  # up-left edge (NW face)
 			top_a = w_pt; top_b = n_pt
-			uv_a = Vector2(0, 15); uv_b = Vector2(16, 8)
-			shade = 0.85
-		Vector2i(1, 0):  # east neighbor -> south-east face
+			shade = 1.0
+		Vector2i(1, 0):   # down-right edge (SE face)
 			top_a = e_pt; top_b = s_pt
-			uv_a = Vector2(31, 15); uv_b = Vector2(16, 23)
-			shade = 0.52
-		_:  # south neighbor -> south-west face
+			shade = 0.7
+		_:                # down-left edge (SW face)
 			top_a = s_pt; top_b = w_pt
-			uv_a = Vector2(16, 23); uv_b = Vector2(0, 15)
-			shade = 0.62
+			shade = 0.82
 
-	var drop := lift - lift_n
-	var points := PackedVector2Array([
+	var drop := absi(diff)
+	var quad := PackedVector2Array([
 		top_a, top_b,
 		top_b + Vector2(0, drop), top_a + Vector2(0, drop),
 	])
-	var tex_size := texture.get_size()
-	# In 23px slope frames the surface diamond sits 8px lower than in the
-	# 15px flat frames: compensate so we always sample the surface edges.
-	var uv_shift := region.size.y - 15.0
-	var uv_drop := minf(6.0, drop)
-	# draw_polygon() expects normalized UVs: map local frame coords into the
-	# region slot, then divide by the sheet size.
-	var _uv := func(local: Vector2, dy: float) -> Vector2:
-		var px := region.position + Vector2(clampf(local.x, 0, region.size.x - 1), clampf(local.y + uv_shift + dy, 0, region.size.y - 1))
-		return px / tex_size
-	var uvs := PackedVector2Array([
-		_uv.call(uv_a, 0), _uv.call(uv_b, 0),
-		_uv.call(uv_b, uv_drop), _uv.call(uv_a, uv_drop),
-	])
-	var col := Color(shade, shade, shade)
-	draw_polygon(points, PackedColorArray([col, col, col, col]), uvs, texture)
+	var col := Color(base.r * shade, base.g * shade, base.b * shade)
+	draw_colored_polygon(quad, col)
 
-
-## Chooses the slope sprite from the neighbors' heights — all four ramp
-## orientations:
-## - neighbor (x, y-1) higher  → ramp rising toward the up-right edge
-## - neighbor (x-1, y) higher  → ramp rising toward the up-left edge
-## - neighbor (x+1, y) higher  → ramp rising toward the down-right edge
-## - neighbor (x, y+1) higher  → ramp rising toward the down-left edge
-## - both up-neighbors higher  → corner pyramid (isolated peak corner)
-func _slope_frame(cell_pos: Vector2i, cell: Cell) -> TileCatalog.SlopeFrame:
-	var h := cell.height
-	var higher_n := height_at(cell_pos + Vector2i(0, -1)) > h
-	var higher_w := height_at(cell_pos + Vector2i(-1, 0)) > h
-	var higher_e := height_at(cell_pos + Vector2i(1, 0)) > h
-	var higher_s := height_at(cell_pos + Vector2i(0, 1)) > h
-
-	if higher_n and higher_w:
-		return TileCatalog.SlopeFrame.CORNER_PYRAMID
-	if higher_n:
-		return TileCatalog.SlopeFrame.NE_RAMP_A
-	if higher_w:
-		return TileCatalog.SlopeFrame.NW_RAMP_A
-	if higher_e:
-		return TileCatalog.SlopeFrame.SE_RAMP_A
-	if higher_s:
-		return TileCatalog.SlopeFrame.SW_RAMP_A
-	return TileCatalog.SlopeFrame.NONE
 
 
 ## Zone overlay: drawn lifted with the tile, under any building.

@@ -13,7 +13,43 @@ const LEGACY_IMAGE_PREFIX := "res://assets/images/"
 
 var _tiles: Dictionary = {}          # id -> tile dictionary
 var _textures: Dictionary = {}       # file name -> Texture2D
+var _surface_colors: Dictionary = {} # file name -> average surface color
 var _rng := RandomNumberGenerator.new()
+
+
+## Average surface color of a tile's flat sprite (sampled once per sheet):
+## used to tint the procedural cliff walls so they match the terrain.
+func get_surface_color(tile: Dictionary) -> Color:
+	var file_name: String = tile.get("tiles", {}).get("fileName", "")
+	if file_name.is_empty():
+		return Color(0.35, 0.4, 0.25)
+	if not _surface_colors.has(file_name):
+		var texture := get_texture(tile)
+		var color := Color(0.35, 0.4, 0.25)
+		if texture != null:
+			var img := texture.get_image()
+			if img != null:
+				img.decompress()
+				var clip_h: int = int(tile.get("tiles", {}).get("clip_height", 15))
+				var clip_w: int = int(tile.get("tiles", {}).get("clip_width", 32))
+				var ox: int = int(tile.get("tiles", {}).get("offset", 0)) * clip_w
+				var oy: int = maxi(0, img.get_height() - clip_h)
+				var r := 0.0
+				var g := 0.0
+				var b := 0.0
+				var n := 0
+				for x in range(ox + 6, ox + clip_w - 6, 3):
+					for y in range(oy + 2, oy + clip_h - 2, 2):
+						var px := img.get_pixel(x, y)
+						if px.a > 0.5:
+							r += px.r
+							g += px.g
+							b += px.b
+							n += 1
+				if n > 0:
+					color = Color(r / n, g / n, b / n)
+		_surface_colors[file_name] = color
+	return _surface_colors[file_name]
 
 
 func _init(seed_value: int = 0) -> void:
