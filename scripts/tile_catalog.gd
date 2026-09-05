@@ -95,14 +95,17 @@ func get_region(tile: Dictionary, texture_height: int, variant: int = 0) -> Rect
 ##
 ## Geometry (from pixel profiles):
 ## - slots 0/9: RAMPS — floor surface rising toward the up-right edge
-##   (half the tile at floor level, half raised by one step)
 ## - slots 1/10: mirrored ramps rising toward the up-left edge
+## - slots 2/5: ramps rising toward the east corner (right edge raised)
+## - slots 3/6: ramps rising toward the west corner (left edge raised)
 ## - slot 4: CORNER PYRAMID — both up-edges rise, single peak
 ## - slots 7/13/14/15: flat variants
 enum SlopeFrame {
 	NONE = -1,  # draw a flat variant instead of a slope frame
 	NE_RAMP_A = 0, NE_RAMP_B = 9,
 	NW_RAMP_A = 1, NW_RAMP_B = 10,
+	SE_RAMP_A = 2, SE_RAMP_B = 5,
+	SW_RAMP_A = 3, SW_RAMP_B = 6,
 	CORNER_PYRAMID = 4,
 }
 

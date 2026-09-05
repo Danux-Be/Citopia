@@ -622,22 +622,30 @@ func _draw_wall(cell_pos: Vector2i, side: Vector2i, h: int, hn: int, texture: Te
 	draw_polygon(points, PackedColorArray([col, col, col, col]), uvs, texture)
 
 
-## Chooses the slope sprite from the neighbors' heights.
-## - neighbor (x, y-1) higher  → ramp rising toward the up-right screen edge
-## - neighbor (x-1, y) higher  → ramp rising toward the up-left screen edge
-## - both higher               → corner pyramid (isolated peak corner)
-## - higher south/east neighbors draw AFTER us and cover the seam themselves.
+## Chooses the slope sprite from the neighbors' heights — all four ramp
+## orientations:
+## - neighbor (x, y-1) higher  → ramp rising toward the up-right edge
+## - neighbor (x-1, y) higher  → ramp rising toward the up-left edge
+## - neighbor (x+1, y) higher  → ramp rising toward the down-right edge
+## - neighbor (x, y+1) higher  → ramp rising toward the down-left edge
+## - both up-neighbors higher  → corner pyramid (isolated peak corner)
 func _slope_frame(cell_pos: Vector2i, cell: Cell) -> TileCatalog.SlopeFrame:
 	var h := cell.height
 	var higher_n := height_at(cell_pos + Vector2i(0, -1)) > h
 	var higher_w := height_at(cell_pos + Vector2i(-1, 0)) > h
+	var higher_e := height_at(cell_pos + Vector2i(1, 0)) > h
+	var higher_s := height_at(cell_pos + Vector2i(0, 1)) > h
 
 	if higher_n and higher_w:
 		return TileCatalog.SlopeFrame.CORNER_PYRAMID
 	if higher_n:
-		return TileCatalog.SlopeFrame.NE_RAMP_A if cell.terrain_variant % 2 == 0 else TileCatalog.SlopeFrame.NE_RAMP_B
+		return TileCatalog.SlopeFrame.NE_RAMP_A
 	if higher_w:
-		return TileCatalog.SlopeFrame.NW_RAMP_A if cell.terrain_variant % 2 == 0 else TileCatalog.SlopeFrame.NW_RAMP_B
+		return TileCatalog.SlopeFrame.NW_RAMP_A
+	if higher_e:
+		return TileCatalog.SlopeFrame.SE_RAMP_A
+	if higher_s:
+		return TileCatalog.SlopeFrame.SW_RAMP_A
 	return TileCatalog.SlopeFrame.NONE
 
 

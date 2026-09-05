@@ -240,10 +240,14 @@ func _redraw_minimap() -> void:
 	if img == null or img.get_width() != size:
 		img = Image.create(size, size, false, Image.FORMAT_RGB8)
 		_minimap_image = img
+		_minimap.texture = ImageTexture.create_from_image(img)
 	for y in size:
 		for x in size:
 			img.set_pixel(x, y, _cell_color(Vector2i(x, y)))
-	_minimap.texture.update(img)
+	if size == _minimap.texture.get_size().x:
+		_minimap.texture.update(img)
+	else:
+		_minimap.texture = ImageTexture.create_from_image(img)
 
 
 func _cell_color(cell_pos: Vector2i) -> Color:

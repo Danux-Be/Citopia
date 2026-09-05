@@ -35,7 +35,8 @@ func _ready() -> void:
 
 	var args := OS.get_cmdline_user_args()
 	if "--shot" in args:
-		_shot_frames = 300  # let the demo finish before capturing
+		# let the active demo finish before capturing
+		_shot_frames = 1100 if "--demo-elevation" in args else 300
 	if "--demo" in args or "--demo-elevation" in args:
 		found_city()  # demos skip the map editor
 	if "--demo" in args:
@@ -195,7 +196,7 @@ func _build_elevation_steps() -> Array:
 		for x in range(20, 28):
 			steps.append([IsoMap.RAISE, Vector2i(x, 25)])
 	# A small round hill next to the plateau.
-	for ring in 3:
+	for ring in 4:
 		for a in 12:
 			var angle := TAU * a / 12.0
 			var p := Vector2i(33, 21) + Vector2i(int(round(cos(angle) * (3 - ring))), int(round(sin(angle) * (3 - ring))))
