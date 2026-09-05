@@ -53,6 +53,11 @@ open, on a modern and moddable engine.
 - 🏘️ **RCI zoning**: paint residential/commercial/industrial zones and
   watch buildings grow on their own (1×1 buildings from the 500+ database
   entries), de-zone tool, bulldozer clears buildings and zones
+- 🛣️ **Roads & traffic**: paint roads by dragging (they auto-connect with
+  the right sprite: intersections, corners, dead-ends) and watch cars drive
+  the network — BFS pathfinding, right-hand lanes, fleet scaling with
+  population. Maps are flat for now while traffic gets polished (the Hills
+  slider is disabled in the map editor)
 - 🖥️ **Game UI**: top bar with in-game date and pause/speed controls,
   live population and funds, mini RCI indicator, minimap with camera
   viewport (click to jump), build bar with category tabs browsing the
@@ -72,6 +77,7 @@ open, on a modern and moddable engine.
 - [x] RCI zones that grow buildings on their own
 - [x] Map editor (seed, size, terrain sliders, live preview)
 - [x] Game HUD: date, speed, population, funds, minimap
+- [x] Roads with auto-connecting sprites + vehicle AI (BFS routing)
 - [ ] Simulation: RCI demand, taxes
 - [ ] Automatic roads
 - [ ] Mod support (the DNA of the original Cytopia project)

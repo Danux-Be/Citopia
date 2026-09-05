@@ -31,6 +31,7 @@ func _ready() -> void:
 	hud.setup(iso_map, $GameCamera)
 	map_editor.setup(iso_map, $GameCamera)
 	map_editor.found_city.connect(found_city)
+	$Traffic.setup(iso_map)
 	build_bar.visible = false
 
 	var args := OS.get_cmdline_user_args()
@@ -41,6 +42,9 @@ func _ready() -> void:
 		found_city()  # demos skip the map editor
 	if "--demo" in args:
 		_place_demo_village()
+		var cam: Camera2D = $GameCamera
+		cam.position = Vector2(-112, 792)  # village center (46,53)
+		cam.zoom = Vector2(2.4, 2.4)
 	if "--demo-elevation" in args:
 		# synthetic flat ground: the terraformed shapes read unambiguously
 		iso_map.generate_flat(48, 2)
@@ -70,6 +74,10 @@ func _process(delta: float) -> void:
 		if _shot_frames == 0:
 			var img := get_viewport().get_texture().get_image()
 			img.save_png("/tmp/citopia_shot.png")
+			var traffic := $Traffic as Traffic
+			print("DEBUG roads=%d vehicles=%d target=%d pop=%d funds=%d" % [
+				traffic.road_count(), traffic.get_child_count(), traffic.target_fleet(),
+				iso_map.get_population(), iso_map.get_funds()])
 			print("SHOT_SAVED")
 			get_tree().quit()
 	var over_ui := get_viewport().gui_get_hovered_control() != null
@@ -79,19 +87,21 @@ func _process(delta: float) -> void:
 	else:
 		iso_map.set_hovered(iso_map.screen_to_iso(iso_map.get_local_mouse_position()))
 
-		# Drag-painting for terrain tools and zones.
+		# Drag-painting for terrain tools, zones and roads.
 		var tool := iso_map.selected_tool
 		var paintable := tool in [IsoMap.RAISE, IsoMap.LOWER, IsoMap.LEVEL, IsoMap.DOZER, IsoMap.DEZONE] \
-				or iso_map.is_zone_tool(tool)
+				or iso_map.is_zone_tool(tool) or iso_map.is_road_tool(tool)
 		if _painting and paintable:
 			_paint_timer -= delta
 			if _paint_timer <= 0.0:
 				_paint_timer = PAINT_INTERVAL
 				_apply_tool(iso_map.hovered, false)
 
-	# Zone growth: buildings appear on zoned cells by themselves.
-	# (independent of the mouse — hovering UI must not pause the city)
-	if menu_mode or hud.is_paused():
+	# Zone growth and traffic: buildings appear on zoned cells by themselves
+	# and vehicles drive around — both stop while paused or in the editor.
+	var paused: bool = menu_mode or hud.is_paused()
+	$Traffic.process_mode = ProcessMode.PROCESS_MODE_DISABLED if paused else ProcessMode.PROCESS_MODE_INHERIT
+	if paused:
 		return
 	_growth_timer -= delta
 	if _growth_timer <= 0.0:
@@ -134,25 +144,29 @@ func _apply_tool(cell: Vector2i, play_fail: bool) -> void:
 		_:
 			if iso_map.is_zone_tool(iso_map.selected_tool):
 				iso_map.paint_zone(cell, iso_map.selected_tool)
+			elif iso_map.is_road_tool(iso_map.selected_tool):
+				if not iso_map.place_road(iso_map.selected_tool, cell) and play_fail:
+					$FailSound.stream = _fail_stream
+					$FailSound.play()
 			elif not iso_map.place(iso_map.selected_tool, cell) and play_fail:
 				$FailSound.stream = _fail_stream
 				$FailSound.play()
 
 
 func _place_demo_village() -> void:
+	# a small road network: main street, two side streets down to the zones
+	for x in range(38, 56):
+		iso_map.place_road("road_paved", Vector2i(x, 50))
+	for y in range(50, 58):
+		iso_map.place_road("road_paved", Vector2i(41, y))
+		iso_map.place_road("road_paved", Vector2i(47, y))
+		iso_map.place_road("road_paved", Vector2i(53, y))
 	var placements: Array = [
-		["road_paved", Vector2i(40, 50)], ["road_paved", Vector2i(41, 50)],
-		["road_paved", Vector2i(42, 50)], ["road_paved", Vector2i(43, 50)],
-		["road_paved", Vector2i(44, 50)], ["road_paved", Vector2i(45, 50)],
-		["road_paved", Vector2i(46, 50)], ["road_paved", Vector2i(47, 50)],
-		["road_paved", Vector2i(48, 50)], ["road_paved", Vector2i(49, 50)],
-		["road_paved", Vector2i(50, 50)], ["road_paved", Vector2i(51, 50)],
 		["res_1x1_AnconaHome", Vector2i(41, 48)],
 		["res_2x2_AnnasHouse", Vector2i(44, 47)],
 		["com_1x1_CafeApartment_kt", Vector2i(48, 48)],
 		["ind_1x1_GarageGonneVillela", Vector2i(51, 48)],
 		["bush_green_dense", Vector2i(43, 49)],
-		["bush_green_dense", Vector2i(47, 52)],
 		["bush_green_dense", Vector2i(50, 46)],
 	]
 	for placement: Array in placements:

@@ -108,8 +108,13 @@ func _build_ui() -> void:
 	size_row.add_child(_size_option)
 	vbox.add_child(size_row)
 
-	# terrain sliders
-	vbox.add_child(_slider_row("hills", "Hills", 50.0))
+	# terrain sliders (hills disabled: maps are flat for the traffic milestone)
+	var hills_row := _slider_row("hills", "Hills", 50.0)
+	var hills_slider: HSlider = hills_row.get_child(1)
+	hills_slider.editable = false
+	hills_slider.tooltip_text = "Flat maps for now — elevation returns after traffic"
+	hills_row.modulate = Color(1, 1, 1, 0.45)
+	vbox.add_child(hills_row)
 	vbox.add_child(_slider_row("water", "Water", 22.0))
 	vbox.add_child(_slider_row("trees", "Trees", 50.0))
 

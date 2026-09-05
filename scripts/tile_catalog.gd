@@ -75,6 +75,16 @@ func has_tile(id: String) -> bool:
 	return _tiles.has(id)
 
 
+## True for the drivable 24-frame road strips (excludes the blank filler
+## entry shipped in the legacy database).
+func is_road_tile(id: String) -> bool:
+	var tile: Dictionary = _tiles.get(id, {})
+	if not id.begins_with("road_") or tile.is_empty():
+		return false
+	var file_name: String = tile.get("tiles", {}).get("fileName", "")
+	return not file_name.contains("BlankTile")
+
+
 func get_tile(id: String) -> Dictionary:
 	return _tiles.get(id, {})
 

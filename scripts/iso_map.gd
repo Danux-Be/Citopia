@@ -2,8 +2,9 @@ class_name IsoMap
 extends Node2D
 
 ## Isometric map built from the legacy Cytopia tile database.
-## v3: terrain elevation (terraced, ±1 step like the original), slope
-## sprites, raise/lower/level tools.
+## v4: flat map generation (vehicle/road focus), a road layer with native
+## autotile frames, and per-diagonal rendering so vehicles (and tall
+## buildings) sort correctly with the painter's algorithm via z_index.
 
 const TILE_W := 32
 const TILE_H := 16
@@ -32,8 +33,19 @@ var _rng := RandomNumberGenerator.new()
 var _growth_pool := {}       # zone id -> Array of 1x1 building tile ids
 
 signal stats_changed
+signal roads_changed
 var _population := 0
 var _funds := 20000
+
+# -- Road autotile frames (measured on the 24-frame legacy road strips) -----
+# 16 full-diamond variants (plain + marked), 4 half tiles for dead ends
+# (pointing at the single connection), 2 sloped frames (unused on flat maps).
+const ROAD_FULL_PLAIN: Array[int] = [0, 1, 2, 4, 8, 16, 17, 18, 19]
+const ROAD_FULL_MARKED: Array[int] = [5, 7, 10, 11, 13, 14, 15]
+const ROAD_HALF := {           # connection direction -> sheet frame
+	Vector2i(0, -1): 6, Vector2i(1, 0): 3,
+	Vector2i(0, 1): 9, Vector2i(-1, 0): 12,
+}
 
 
 class Cell:
@@ -41,6 +53,8 @@ class Cell:
 	var terrain_variant := 0     # index among the flat variants
 	var height := 0              # elevation level (terraced, ±1 per step)
 	var zone := ""               # zone tile id painted on this cell ("" = none)
+	var road := ""               # road tile id on this cell ("" = none)
+	var road_variant := 0        # autotile frame index in the road strip
 	var obj := ""                # object tile id covering this cell ("" = none)
 	var obj_variant := 0
 	var obj_origin := Vector2i() # origin cell of the object covering this cell
@@ -78,14 +92,14 @@ func _build_growth_pool() -> void:
 ##   seed: int          noise seed
 ##   size: int          map side in tiles
 ##   water_pct: 0..100  share of the map under water
-##   hills_pct: 0..100  how high/hilly the land gets
 ##   trees_pct: 0..100  forest density
+##   hills_pct: 0..100  IGNORED for now: maps are generated flat so roads
+##                      and vehicle traffic stay simple
 func generate_map(params: Dictionary = {}) -> void:
 	var seed_value: int = params.get("seed", 1234)
 	if params.has("size"):
 		map_size = int(params.size)
-	var water_pct: float = params.get("water_pct", 28.0)
-	var hills_pct: float = params.get("hills_pct", 50.0)
+	var water_pct: float = params.get("water_pct", 22.0)
 	var trees_pct: float = params.get("trees_pct", 50.0)
 
 	var elevation := FastNoiseLite.new()
@@ -101,20 +115,19 @@ func generate_map(params: Dictionary = {}) -> void:
 	# thresholds derived from the editor percentages
 	var water_cut := _water_cut(water_pct / 100.0)
 	var tree_cut := lerpf(0.9, -0.2, trees_pct / 100.0)
-	var hill_rich := lerpf(0.15, 0.65, hills_pct / 100.0)
 
 	for y in map_size:
 		for x in map_size:
 			var cell := Cell.new()
 			var e := elevation.get_noise_2d(x, y)
-			cell.height = _elevation_level(e, water_cut, hill_rich)
+			cell.height = 0  # flat maps for the traffic milestone
 			cell.terrain = _pick_terrain(e, moisture.get_noise_2d(x, y), water_cut, tree_cut)
 			cell.terrain_variant = catalog.pick_variant(catalog.get_tile(cell.terrain))
 			_cells[x + y * map_size] = cell
 
-	_enforce_terraces()
 	_population = 0
-	queue_redraw()
+	_rebuild_diagonals()
+	roads_changed.emit()
 
 
 ## Fraction of the map under water -> noise cut, calibrated on FastNoiseLite
@@ -133,19 +146,6 @@ func _water_cut(fraction: float) -> float:
 	return curve[-1][1]
 
 
-func _elevation_level(e: float, water_cut: float, hill_rich: float) -> int:
-	if e < water_cut:
-		return 0  # water level
-	var land := (e - water_cut) / maxf(0.001, 1.0 - water_cut)  # 0..1 above water
-	if land < hill_rich * 0.35:
-		return 1
-	if land < hill_rich * 0.65:
-		return 2
-	if land < hill_rich:
-		return 3
-	return 4
-
-
 ## Flat test map (elevation showcase): uniform grass at `base_height`.
 func generate_flat(size: int, base_height: int) -> void:
 	map_size = size
@@ -158,7 +158,8 @@ func generate_flat(size: int, base_height: int) -> void:
 			cell.terrain_variant = catalog.pick_variant(catalog.get_tile(cell.terrain))
 			cell.height = base_height
 			_cells[x + y * size] = cell
-	queue_redraw()
+	_rebuild_diagonals()
+	roads_changed.emit()
 
 
 func _pick_terrain(elevation: float, moisture: float, water_cut: float, tree_cut: float) -> String:
@@ -171,25 +172,6 @@ func _pick_terrain(elevation: float, moisture: float, water_cut: float, tree_cut
 	if moisture < tree_cut - 0.84:
 		return "terrain_grass_mint"
 	return "terrain_grass"
-
-
-## Terracing rule (legacy changeHeight behavior): adjacent cells never differ
-## by more than one level, so every step is drawable by a slope sprite.
-func _enforce_terraces() -> void:
-	for pass_n in 4:
-		var changed := false
-		for y in map_size:
-			for x in map_size:
-				var cell := _cell(Vector2i(x, y))
-				for n in [Vector2i(x, y - 1), Vector2i(x - 1, y), Vector2i(x + 1, y), Vector2i(x, y + 1)]:
-					if not in_bounds(n):
-						continue
-					var neighbor := _cell(n)
-					if neighbor.height > cell.height + 1:
-						neighbor.height = cell.height + 1
-						changed = true
-		if not changed:
-			break
 
 
 # -- Geometry ------------------------------------------------------------
@@ -232,7 +214,7 @@ func change_height(origin: Vector2i, delta: int) -> void:
 	if not in_bounds(origin) or _cell(origin).terrain == "water":
 		return
 	_change_height_rec(origin, delta, 0)
-	queue_redraw()
+	_flush()
 
 
 func _change_height_rec(cell_pos: Vector2i, delta: int, depth: int) -> void:
@@ -245,6 +227,7 @@ func _change_height_rec(cell_pos: Vector2i, delta: int, depth: int) -> void:
 	if target == cell.height:
 		return
 	cell.height = target
+	_mark(cell_pos)
 	# Keep the ±1 terracing invariant: pull neighbors one step along.
 	for n in [cell_pos + Vector2i(0, -1), cell_pos + Vector2i(-1, 0), cell_pos + Vector2i(1, 0), cell_pos + Vector2i(0, 1)]:
 		if in_bounds(n) and _cell(n).terrain != "water":
@@ -279,7 +262,7 @@ func level_terrain(origin: Vector2i) -> void:
 	var target := height_at(origin)
 	var filled := {}
 	_level_fill(origin, target, filled, 0)
-	queue_redraw()
+	_flush()
 
 
 func _level_fill(cell_pos: Vector2i, target: int, filled: Dictionary, depth: int) -> void:
@@ -290,6 +273,7 @@ func _level_fill(cell_pos: Vector2i, target: int, filled: Dictionary, depth: int
 		return
 	filled[cell_pos] = true
 	cell.height = target
+	_mark(cell_pos)
 	_demolish_if_sloped(cell_pos)
 	for n in [cell_pos + Vector2i(0, -1), cell_pos + Vector2i(-1, 0), cell_pos + Vector2i(1, 0), cell_pos + Vector2i(0, 1)]:
 		_level_fill(n, target, filled, depth + 1)
@@ -319,7 +303,7 @@ func can_place(tile_id: String, origin: Vector2i) -> bool:
 			if not in_bounds(cell_pos):
 				return false
 			var cell := _cell(cell_pos)
-			if cell.obj != "":
+			if cell.obj != "" or cell.road != "":
 				return false
 			if not _covers_terrain(tile, cell.terrain):
 				return false
@@ -329,10 +313,14 @@ func can_place(tile_id: String, origin: Vector2i) -> bool:
 	return true
 
 
-func place(tile_id: String, origin: Vector2i) -> bool:
+## Places a tile. `charge` is false for buildings that grow by themselves.
+func place(tile_id: String, origin: Vector2i, charge := true) -> bool:
 	if not can_place(tile_id, origin):
 		return false
 	var tile := catalog.get_tile(tile_id)
+	var price := int(tile.get("price", 0))
+	if charge and _funds < price:
+		return false
 	var size := tile_size(tile)
 	var variant := catalog.pick_variant(tile)
 	for dx in size.x:
@@ -342,16 +330,22 @@ func place(tile_id: String, origin: Vector2i) -> bool:
 			cell.obj_variant = variant
 			cell.obj_origin = origin
 			cell.obj_size = size
+			_mark(origin + Vector2i(dx, dy))
+	if charge:
+		_funds -= price
 	_population += int(tile.get("inhabitants", 0))
-	_funds -= int(tile.get("price", 0))
 	stats_changed.emit()
-	queue_redraw()
+	_flush()
 	return true
 
 
-## Removes the object covering the given cell (buildings of any size).
+## Removes the object or road covering the given cell (buildings of any size).
 func demolish(cell: Vector2i) -> bool:
-	if not in_bounds(cell) or _cell(cell).obj == "":
+	if not in_bounds(cell):
+		return false
+	if _cell(cell).obj == "" and _cell(cell).road != "":
+		return remove_road(cell)
+	if _cell(cell).obj == "":
 		return false
 	var obj_origin: Vector2i = _cell(cell).obj_origin
 	var size: Vector2i = _cell(cell).obj_size
@@ -362,9 +356,10 @@ func demolish(cell: Vector2i) -> bool:
 			c.obj = ""
 			c.obj_origin = Vector2i()
 			c.obj_size = Vector2i.ONE
+			_mark(obj_origin + Vector2i(dx, dy))
 	_population -= int(demolished.get("inhabitants", 0))
 	stats_changed.emit()
-	queue_redraw()
+	_flush()
 	return true
 
 
@@ -388,23 +383,109 @@ func get_funds() -> int:
 	return _funds
 
 
+# -- Roads ------------------------------------------------------------------
+
+func is_road_tool(tool_id: String) -> bool:
+	return tool_id.begins_with("road_") and catalog.is_road_tile(tool_id)
+
+
+func is_road(cell: Vector2i) -> bool:
+	return in_bounds(cell) and _cell(cell).road != ""
+
+
+## Roads need the cell and its 4 neighbors at one height (no slope art for
+## connections); always true on flat maps.
+func _road_site_ok(cell: Vector2i) -> bool:
+	var h := height_at(cell)
+	for n: Vector2i in [cell + Vector2i(0, -1), cell + Vector2i(1, 0), cell + Vector2i(0, 1), cell + Vector2i(-1, 0)]:
+		if in_bounds(n) and height_at(n) != h:
+			return false
+	return true
+
+
+func can_place_road(road_id: String, cell: Vector2i) -> bool:
+	if not in_bounds(cell) or not is_road_tool(road_id):
+		return false
+	var c := _cell(cell)
+	if c.terrain == "water" or c.obj != "" or not _road_site_ok(cell):
+		return false
+	if c.road == road_id:
+		return true  # repainting the same road is a no-op, not a failure
+	return c.road != "" or _funds >= int(catalog.get_tile(road_id).get("price", 0))
+
+
+## Lays one road cell and refreshes the autotile frames around it.
+func place_road(road_id: String, cell: Vector2i) -> bool:
+	if not can_place_road(road_id, cell):
+		return false
+	var c := _cell(cell)
+	if c.road == road_id:
+		return true
+	if c.road == "":
+		_funds -= int(catalog.get_tile(road_id).get("price", 0))
+		stats_changed.emit()
+	c.road = road_id
+	_refresh_road_frame(cell)
+	for n: Vector2i in [cell + Vector2i(0, -1), cell + Vector2i(1, 0), cell + Vector2i(0, 1), cell + Vector2i(-1, 0)]:
+		if is_road(n):
+			_refresh_road_frame(n)
+	roads_changed.emit()
+	_flush()
+	return true
+
+
+func remove_road(cell: Vector2i) -> bool:
+	if not is_road(cell):
+		return false
+	_cell(cell).road = ""
+	_refresh_road_frame(cell)
+	for n: Vector2i in [cell + Vector2i(0, -1), cell + Vector2i(1, 0), cell + Vector2i(0, 1), cell + Vector2i(-1, 0)]:
+		if is_road(n):
+			_refresh_road_frame(n)
+	roads_changed.emit()
+	_flush()
+	return true
+
+
+## Autotile: the frame depends on how many road neighbors the cell has.
+## 0 -> plain diamond, 1 -> native half tile toward the connection,
+## 2+ -> full diamond (mostly plain, occasional marked variant).
+func _refresh_road_frame(cell: Vector2i) -> void:
+	var c := _cell(cell)
+	var connections: Array[Vector2i] = []
+	for n: Vector2i in ROAD_HALF:
+		if is_road(cell + n):
+			connections.append(n)
+	var h := hash(Vector2i(cell.x, cell.y))
+	if connections.size() == 1:
+		c.road_variant = ROAD_HALF[connections[0]]
+	elif connections.size() == 0:
+		c.road_variant = ROAD_FULL_PLAIN[h % ROAD_FULL_PLAIN.size()]
+	elif h % 4 == 0:
+		c.road_variant = ROAD_FULL_MARKED[h % ROAD_FULL_MARKED.size()]
+	else:
+		c.road_variant = ROAD_FULL_PLAIN[h % ROAD_FULL_PLAIN.size()]
+	_mark(cell)
+
+
 # -- Zoning ----------------------------------------------------------------
 
 func is_zone_tool(tool_id: String) -> bool:
 	return tool_id.begins_with(ZONE_PREFIX)
 
 
-## Paints a zone on one cell (land only, no building on top).
+## Paints a zone on one cell (land only, no building, no road on top).
 func paint_zone(cell: Vector2i, zone_id: String) -> bool:
 	if not in_bounds(cell):
 		return false
 	var c := _cell(cell)
-	if c.terrain == "water" or c.obj != "":
+	if c.terrain == "water" or c.obj != "" or c.road != "":
 		return false
 	if c.zone == zone_id:
 		return false
 	c.zone = zone_id
-	queue_redraw()
+	_mark(cell)
+	_flush()
 	return true
 
 
@@ -413,19 +494,20 @@ func clear_zone(cell: Vector2i) -> bool:
 	if not in_bounds(cell) or _cell(cell).zone == "":
 		return false
 	_cell(cell).zone = ""
-	queue_redraw()
+	_mark(cell)
+	_flush()
 	return true
 
 
 ## Growth tick: a few random zoned empty cells spawn a matching building.
-## Buildings only grow on flat, buildable ground (the usual placement rules).
+## Buildings only grow on flat, buildable ground without roads.
 func grow_zones(max_spawns: int = 3) -> void:
 	var candidates: Array[Vector2i] = []
 	for y in map_size:
 		for x in map_size:
 			var cell_pos := Vector2i(x, y)
-			var zone_id: String = _cell(cell_pos).zone
-			if zone_id != "" and _cell(cell_pos).obj == "":
+			var c := _cell(cell_pos)
+			if c.zone != "" and c.obj == "" and c.road == "":
 				candidates.append(cell_pos)
 	if candidates.is_empty():
 		return
@@ -439,7 +521,7 @@ func grow_zones(max_spawns: int = 3) -> void:
 		if pool.is_empty():
 			continue
 		var building: String = pool[_rng.randi_range(0, pool.size() - 1)]
-		if place(building, cell_pos):
+		if place(building, cell_pos, false):
 			spawned += 1
 
 
@@ -450,7 +532,7 @@ func set_hovered(cell: Vector2i) -> bool:
 	hovered = cell
 	_hover_valid = _update_hover_validity()
 	if changed:
-		queue_redraw()
+		_hover_node.queue_redraw()
 	return changed
 
 
@@ -459,41 +541,102 @@ func _update_hover_validity() -> bool:
 		return false
 	match selected_tool:
 		DOZER:
-			return _cell(hovered).obj != "" or _cell(hovered).zone != ""
+			return _cell(hovered).obj != "" or _cell(hovered).zone != "" or _cell(hovered).road != ""
 		DEZONE:
 			return _cell(hovered).zone != ""
 		RAISE, LOWER, LEVEL:
 			return _cell(hovered).terrain != "water"
 		_:
+			if is_road_tool(selected_tool):
+				return can_place_road(selected_tool, hovered)
 			if is_zone_tool(selected_tool):
-				return _cell(hovered).terrain != "water" and _cell(hovered).obj == ""
+				return _cell(hovered).terrain != "water" and _cell(hovered).obj == "" and _cell(hovered).road == ""
 			return can_place(selected_tool, hovered)
 
 
 # -- Rendering ------------------------------------------------------------
 
-func _draw() -> void:
+## One canvas item per (x + y) diagonal, z-ordered so later diagonals paint
+## over earlier ones. Vehicles slip between two diagonals with z = sum*2+1,
+## which restores correct painter's-algorithm occlusion for moving sprites
+## without redrawing the whole map every frame.
+var _diag_nodes: Array[Node2D] = []
+var _hover_node: Node2D
+var _pending_sums := {}   # sum -> true, flushed to diagonal redraws
+
+
+func _rebuild_diagonals() -> void:
+	for node in _diag_nodes:
+		node.queue_free()
+	_diag_nodes.clear()
+	if _hover_node != null:
+		_hover_node.queue_free()
+	for sum in range(0, 2 * map_size - 1):
+		var node := Node2D.new()
+		node.z_index = sum * 2
+		node.draw.connect(_draw_diagonal.bind(sum, node))
+		add_child(node)
+		_diag_nodes.append(node)
+	_hover_node = Node2D.new()
+	_hover_node.z_index = 4095  # Godot caps z_index at 4096
+	_hover_node.draw.connect(_draw_hover)
+	add_child(_hover_node)
+	_redraw_all()
+
+
+func _redraw_all() -> void:
+	for node in _diag_nodes:
+		node.queue_redraw()
+	if _hover_node != null:
+		_hover_node.queue_redraw()
+
+
+## Marks a changed cell; its diagonal is redrawn on the next flush.
+func _mark(cell: Vector2i) -> void:
+	_pending_sums[cell.x + cell.y] = true
+
+
+func _flush() -> void:
+	for sum: int in _pending_sums:
+		_diag_nodes[sum].queue_redraw()
+	_pending_sums.clear()
+
+
+func _draw_diagonal(sum: int, canvas: CanvasItem) -> void:
 	if catalog == null or _cells.is_empty():
 		return
+	var x_start := maxi(0, sum - map_size + 1)
+	var x_end := mini(sum, map_size - 1)
+	# ground pass: terrain, zone overlay, road
+	for x in range(x_start, x_end + 1):
+		var y := sum - x
+		var cell_pos := Vector2i(x, y)
+		var cell := _cell(cell_pos)
+		_draw_terrain(canvas, cell_pos, cell)
+		if cell.zone != "":
+			_draw_zone(canvas, cell_pos, cell)
+		if cell.road != "":
+			_draw_road(canvas, cell_pos, cell)
+	# object pass: a multi-tile object is drawn once, at the diagonal of its
+	# SOUTH corner, so its own footprint cells never paint over its facade.
+	for x in range(x_start, x_end + 1):
+		var y := sum - x
+		var cell_pos := Vector2i(x, y)
+		var cell := _cell(cell_pos)
+		if cell.obj != "" and cell.obj_origin == cell_pos:
+			var south := cell.obj_origin + cell.obj_size - Vector2i.ONE
+			if south.x + south.y == sum:
+				_draw_object(canvas, cell)
 
-	# Painter's algorithm: draw diagonals (x + y) in ascending order so
-	# later (front) tiles correctly cover the elevation steps behind them.
-	for sum in range(0, 2 * map_size - 1):
-		var x_start := maxi(0, sum - map_size + 1)
-		var x_end := mini(sum, map_size - 1)
-		for x in range(x_start, x_end + 1):
-			var y := sum - x
-			var cell := _cell(Vector2i(x, y))
-			_draw_terrain(Vector2i(x, y), cell)
-			if cell.zone != "":
-				_draw_zone(Vector2i(x, y), cell)
-			if cell.obj != "" and cell.obj_origin == Vector2i(x, y):
-				_draw_object(cell)
 
-	_draw_hover()
+func _ground_rect(region: Rect2, pos: Vector2) -> Rect2:
+	## Ground-level sprites (terrain, zones, roads) share one surface line:
+	## the flat diamond top sits at pos.y + 1; taller strips keep their
+	## transparent elevation headroom above it.
+	return Rect2(pos.x - region.size.x * 0.5, pos.y + TILE_H - region.size.y, region.size.x, region.size.y)
 
 
-func _draw_terrain(cell_pos: Vector2i, cell: Cell) -> void:
+func _draw_terrain(canvas: CanvasItem, cell_pos: Vector2i, cell: Cell) -> void:
 	var tile := catalog.get_tile(cell.terrain)
 	var texture := catalog.get_texture(tile)
 	if texture == null:
@@ -534,25 +677,29 @@ func _draw_terrain(cell_pos: Vector2i, cell: Cell) -> void:
 	else:
 		region = catalog.get_region(tile, texture.get_height(), cell.terrain_variant)
 
-	# CRITICAL anchor: 15px flats and 23px slopes share the same surface
-	# line — paste both at pos.y + 1 so slope faces extend BELOW toward the
-	# lower neighbor instead of floating a step too high.
-	var rect := Rect2(pos.x - region.size.x * 0.5, pos.y + 1, region.size.x, region.size.y)
-	draw_texture_rect_region(texture, rect, region)
+	canvas.draw_texture_rect_region(texture, _ground_rect(region, pos), region)
+
+
+func _draw_road(canvas: CanvasItem, cell_pos: Vector2i, cell: Cell) -> void:
+	var tile := catalog.get_tile(cell.road)
+	var texture := catalog.get_texture(tile)
+	if texture == null:
+		return
+	var region := catalog.get_region(tile, texture.get_height(), cell.road_variant)
+	canvas.draw_texture_rect_region(texture, _ground_rect(region, cell_screen_pos(cell_pos)), region)
 
 
 ## Zone overlay: drawn lifted with the tile, under any building.
-func _draw_zone(cell_pos: Vector2i, cell: Cell) -> void:
+func _draw_zone(canvas: CanvasItem, cell_pos: Vector2i, cell: Cell) -> void:
 	var tile := catalog.get_tile(cell.zone)
 	var texture := catalog.get_texture(tile)
 	if texture == null:
 		return
 	var region := catalog.get_region(tile, texture.get_height(), 0)
-	var screen_pos := cell_screen_pos(cell_pos)
-	draw_texture_rect_region(texture, catalog.get_draw_rect(region, screen_pos, TILE_H), region)
+	canvas.draw_texture_rect_region(texture, _ground_rect(region, cell_screen_pos(cell_pos)), region)
 
 
-func _draw_object(cell: Cell) -> void:
+func _draw_object(canvas: CanvasItem, cell: Cell) -> void:
 	var tile := catalog.get_tile(cell.obj)
 	var texture := catalog.get_texture(tile)
 	if texture == null:
@@ -563,7 +710,7 @@ func _draw_object(cell: Cell) -> void:
 	var center := iso_to_screen(origin.x + (size.x - 1) * 0.5, origin.y + (size.y - 1) * 0.5)
 	var bottom := iso_to_screen(origin.x + size.x - 1, origin.y + size.y - 1).y + TILE_H - height_at(origin) * HEIGHT_STEP
 	var rect := Rect2(center.x - region.size.x * 0.5, bottom - region.size.y, region.size.x, region.size.y)
-	draw_texture_rect_region(texture, rect, region)
+	canvas.draw_texture_rect_region(texture, rect, region)
 
 
 func _draw_hover() -> void:
@@ -582,8 +729,8 @@ func _draw_hover() -> void:
 	var bottom := iso_to_screen(origin.x + size.x - 1, origin.y + size.y - 1) + Vector2(0, TILE_H) - Vector2(0, lift)
 	var left := iso_to_screen(origin.x, origin.y + size.y - 1) + Vector2(-TILE_W * 0.5, TILE_H * 0.5) - Vector2(0, lift)
 
-	draw_colored_polygon(PackedVector2Array([top, right, bottom, left]), color)
-	draw_polyline(PackedVector2Array([top, right, bottom, left, top]), Color(color, 0.9), 1.0)
+	_hover_node.draw_colored_polygon(PackedVector2Array([top, right, bottom, left]), color)
+	_hover_node.draw_polyline(PackedVector2Array([top, right, bottom, left, top]), Color(color, 0.9), 1.0)
 
 	# Ghost preview of the tile about to be placed.
 	if not is_terrain_tool and selected_tool != DOZER and _hover_valid:
@@ -593,4 +740,4 @@ func _draw_hover() -> void:
 			var center := iso_to_screen(origin.x + (size.x - 1) * 0.5, origin.y + (size.y - 1) * 0.5) - Vector2(0, lift)
 			var bottom_y := iso_to_screen(origin.x + size.x - 1, origin.y + size.y - 1).y + TILE_H - lift
 			var rect := Rect2(center.x - region.size.x * 0.5, bottom_y - region.size.y, region.size.x, region.size.y)
-			draw_texture_rect_region(texture, rect, region, Color(1, 1, 1, 0.55))
+			_hover_node.draw_texture_rect_region(texture, rect, region, Color(1, 1, 1, 0.55))

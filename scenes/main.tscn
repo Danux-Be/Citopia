@@ -7,6 +7,7 @@
 [ext_resource type="Script" uid="uid://djf0lsrwg8u4r" path="res://scripts/music_player.gd" id="5_music"]
 [ext_resource type="Script" uid="uid://46e6wivu2ocr" path="res://scripts/hud.gd" id="6_hud"]
 [ext_resource type="Script" uid="uid://drenhglkotgdn" path="res://scripts/map_editor.gd" id="7_mapeditor"]
+[ext_resource type="Script" path="res://scripts/traffic.gd" id="8_traffic"]
 
 [node name="Main" type="Node2D" unique_id=2035455002]
 script = ExtResource("1_game")
@@ -29,6 +30,9 @@ script = ExtResource("7_mapeditor")
 [node name="MusicPlayer" type="Node" parent="." unique_id=1790151313]
 script = ExtResource("5_music")
 
+[node name="Traffic" type="Node2D" parent="." unique_id=1777721569]
+script = ExtResource("8_traffic")
+
 [node name="FailSound" type="AudioStreamPlayer" parent="." unique_id=1777721568]
 
 [node name="UI" type="CanvasLayer" parent="." unique_id=2124899839]
@@ -41,5 +45,5 @@ offset_bottom = 60.0
 theme_override_colors/font_color = Color(1, 1, 1, 0.85)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 0.8)
 theme_override_constants/outline_size = 4
-text = "Citopia 0.2 — WASD/arrows: camera · wheel: zoom · right-drag: pan
-Pick a tool below, left-click to build, ESC to clear the tool"
+text = "Citopia 0.3 — WASD/arrows: camera · wheel: zoom · right-drag: pan
+Pick a tool below (roads paint by dragging), left-click to build, ESC to clear"

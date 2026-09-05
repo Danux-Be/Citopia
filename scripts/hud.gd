@@ -50,7 +50,7 @@ func _process(delta: float) -> void:
 	if _minimap_timer <= 0.0:
 		_minimap_timer = 0.5
 		_redraw_minimap()
-		_draw_minimap_frame()
+		_minimap_frame.queue_redraw()
 
 
 func set_speed(s: int) -> void:
@@ -256,6 +256,8 @@ func _cell_color(cell_pos: Vector2i) -> Color:
 		return Color(0.16, 0.32, 0.55)
 	if _iso_map.obj_at(cell_pos) != "":
 		return Color(0.85, 0.3, 0.25)
+	if _iso_map.is_road(cell_pos):
+		return Color(0.42, 0.43, 0.47)
 	var zone: String = _iso_map.zone_at(cell_pos)
 	if zone.begins_with("zone_residential"):
 		return Color(0.3, 0.75, 0.35)
