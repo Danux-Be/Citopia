@@ -75,9 +75,10 @@ func _process(delta: float) -> void:
 			var img := get_viewport().get_texture().get_image()
 			img.save_png("/tmp/citopia_shot.png")
 			var traffic := $Traffic as Traffic
-			print("DEBUG roads=%d vehicles=%d target=%d pop=%d funds=%d unserved=%d" % [
+			print("DEBUG roads=%d vehicles=%d target=%d pop=%d funds=%d unserved=%d abandoned=%d" % [
 				traffic.road_count(), traffic.get_child_count(), traffic.target_fleet(),
-				iso_map.get_population(), iso_map.get_funds(), iso_map.unserved_zone_count()])
+				iso_map.get_population(), iso_map.get_funds(), iso_map.unserved_zone_count(),
+				iso_map.abandoned_count()])
 			print("SHOT_SAVED")
 			get_tree().quit()
 	var over_ui := get_viewport().gui_get_hovered_control() != null
@@ -99,10 +100,12 @@ func _process(delta: float) -> void:
 
 	# Zone growth and traffic: buildings appear on zoned cells by themselves
 	# and vehicles drive around — both stop while paused or in the editor.
+	# Abandoned buildings collapse on the same clock.
 	var paused: bool = menu_mode or hud.is_paused()
 	$Traffic.process_mode = ProcessMode.PROCESS_MODE_DISABLED if paused else ProcessMode.PROCESS_MODE_INHERIT
 	if paused:
 		return
+	iso_map.tick_abandonment(delta)
 	_growth_timer -= delta
 	if _growth_timer <= 0.0:
 		_growth_timer = GROWTH_INTERVAL

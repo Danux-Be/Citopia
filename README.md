@@ -55,8 +55,10 @@ open, on a modern and moddable engine.
   entries), de-zone tool, bulldozer clears buildings and zones
 - ⚡ **Zones need services**: a zone only grows when served — a road within
   2 tiles AND coverage by a power plant (the coal plant radiates further
-  than solar panels). Un-served zones show up darkened on the map, like in
-  the classics
+  than solar panels). Un-served zones show up darkened on the map, and
+  grown buildings that lose their service are abandoned: inhabitants move
+  out immediately, the darkened ruin collapses after a grace period, and
+  the zone regrows once the service is restored
 - 🛣️ **Roads & traffic**: paint roads by dragging (they auto-connect with
   the right sprite: intersections, corners, dead-ends) and watch cars drive
   the network — BFS pathfinding, right-hand lanes, fleet scaling with

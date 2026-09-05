@@ -54,8 +54,10 @@ const ROAD_HALF := {           # connection direction -> sheet frame
 const ROAD_ACCESS_RADIUS := 2
 const PLANT_RADIUS_MIN := 5
 const PLANT_RADIUS_MAX := 16
+const ABANDON_GRACE := 20.0   # seconds unserved before a grown building collapses
 
 var _plants := {}            # plant origin -> radiation radius in tiles
+var _abandoning := {}        # cell pos -> seconds left before collapse
 
 
 class Cell:
@@ -71,6 +73,8 @@ class Cell:
 	var obj_size := Vector2i.ONE # footprint of that object
 	var served_road := false     # a road lies within ROAD_ACCESS_RADIUS (zoned cells)
 	var served_power := false    # a power plant covers this cell (zoned cells)
+	var grown := false           # building spawned by zone growth (service required)
+	var abandoned := false       # grown building that lost road/power service
 
 
 func _ready() -> void:
@@ -365,14 +369,20 @@ func demolish(cell: Vector2i) -> bool:
 	var obj_origin: Vector2i = _cell(cell).obj_origin
 	var size: Vector2i = _cell(cell).obj_size
 	var demolished := catalog.get_tile(_cell(obj_origin).obj)
+	# an abandoned building already lost its inhabitants
+	var occupied: bool = not _cell(obj_origin).abandoned
 	for dx in size.x:
 		for dy in size.y:
 			var c := _cell(obj_origin + Vector2i(dx, dy))
 			c.obj = ""
 			c.obj_origin = Vector2i()
 			c.obj_size = Vector2i.ONE
+			c.grown = false
+			c.abandoned = false
 			_mark(obj_origin + Vector2i(dx, dy))
-	_population -= int(demolished.get("inhabitants", 0))
+	_abandoning.erase(obj_origin)
+	if occupied:
+		_population -= int(demolished.get("inhabitants", 0))
 	if _plants.has(obj_origin):
 		var radius: int = _plants[obj_origin]
 		_plants.erase(obj_origin)
@@ -546,6 +556,7 @@ func grow_zones(max_spawns: int = 3) -> void:
 			continue
 		var building: String = pool[_rng.randi_range(0, pool.size() - 1)]
 		if place(building, cell_pos, false):
+			_cell(cell_pos).grown = true  # zone-grown: needs road + power
 			spawned += 1
 
 
@@ -585,6 +596,7 @@ func _set_road_flag(c: Cell, pos: Vector2i) -> void:
 	if served != c.served_road:
 		c.served_road = served
 		_mark(pos)
+		_update_building_service(pos, served and c.served_power)
 
 
 ## Propagates (or retracts) a plant's coverage; on removal every cell in
@@ -602,6 +614,7 @@ func _update_power_service(plant_pos: Vector2i, radius: int, removed: bool) -> v
 				if not c.served_power:
 					c.served_power = true
 					_mark(pos)
+					_update_building_service(pos, c.served_road)
 				continue
 			var served := false
 			for other_pos: Vector2i in _plants:
@@ -611,6 +624,7 @@ func _update_power_service(plant_pos: Vector2i, radius: int, removed: bool) -> v
 			if served != c.served_power:
 				c.served_power = served
 				_mark(pos)
+				_update_building_service(pos, served and c.served_road)
 
 
 ## Evaluates both flags for one freshly zoned cell.
@@ -623,6 +637,55 @@ func _eval_cell_services(pos: Vector2i) -> void:
 			served = true
 			break
 	c.served_power = served
+
+
+## Zone-grown buildings react to service loss: the population moves out
+## immediately and the building collapses after ABANDON_GRACE seconds. If
+## service returns in time, it recovers and the population moves back in.
+func _update_building_service(pos: Vector2i, served: bool) -> void:
+	var c := _cell(pos)
+	if not c.grown or c.obj == "" or c.abandoned == (not served):
+		return
+	var inhabitants := int(catalog.get_tile(c.obj).get("inhabitants", 0))
+	c.abandoned = not served
+	if served:
+		_abandoning.erase(pos)
+		_population += inhabitants
+	else:
+		_abandoning[pos] = ABANDON_GRACE
+		_population -= inhabitants
+	_mark(pos)
+	stats_changed.emit()
+
+
+## Ages the abandon timers; expired buildings collapse but their zone stays
+## painted, ready to grow again once the service is restored.
+func tick_abandonment(delta: float) -> void:
+	if _abandoning.is_empty():
+		return
+	var expired: Array[Vector2i] = []
+	for pos: Vector2i in _abandoning:
+		_abandoning[pos] -= delta
+		if _abandoning[pos] <= 0.0:
+			expired.append(pos)
+	for pos in expired:
+		_abandoning.erase(pos)
+		var c := _cell(pos)
+		if c.obj == "" or not c.abandoned:
+			continue
+		c.obj = ""
+		c.obj_variant = 0
+		c.obj_origin = Vector2i()
+		c.obj_size = Vector2i.ONE
+		c.grown = false
+		c.abandoned = false
+		_mark(pos)
+	if not expired.is_empty():
+		_flush()
+
+
+func abandoned_count() -> int:
+	return _abandoning.size()
 
 
 ## Number of zoned cells missing road access or power (debug / city advisor).
@@ -831,7 +894,8 @@ func _draw_object(canvas: CanvasItem, cell: Cell) -> void:
 	var center := iso_to_screen(origin.x + (size.x - 1) * 0.5, origin.y + (size.y - 1) * 0.5)
 	var bottom := iso_to_screen(origin.x + size.x - 1, origin.y + size.y - 1).y + TILE_H - height_at(origin) * HEIGHT_STEP
 	var rect := Rect2(center.x - region.size.x * 0.5, bottom - region.size.y, region.size.x, region.size.y)
-	canvas.draw_texture_rect_region(texture, rect, region)
+	var tint := Color(0.42, 0.42, 0.48) if cell.abandoned else Color(1, 1, 1)
+	canvas.draw_texture_rect_region(texture, rect, region, tint)
 
 
 func _draw_hover() -> void:
