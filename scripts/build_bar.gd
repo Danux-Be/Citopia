@@ -97,7 +97,7 @@ func _build_ui() -> void:
 		var zone_label: String = zone_tile.get("title", zone_id)
 		_bar.add_child(_make_tool_button(
 			zone_id, _make_icon(zone_tile),
-			"%s — paint it, buildings grow on their own" % zone_label))
+			"%s — grows only on served cells: road within 2 tiles + power coverage" % zone_label))
 
 	_bar.add_child(_vsep())
 	_bar.add_child(_make_tool_button(IsoMap.RAISE, load(RAISE_ICON), "Raise terrain — hold left click to paint"))

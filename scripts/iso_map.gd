@@ -47,6 +47,16 @@ const ROAD_HALF := {           # connection direction -> sheet frame
 	Vector2i(0, 1): 9, Vector2i(-1, 0): 12,
 }
 
+# -- Zone growth requirements -------------------------------------------------
+# A zoned cell only grows a building when it is served: a road within
+# ROAD_ACCESS_RADIUS (Chebyshev) AND coverage by a power plant. Plants radiate
+# over a radius derived from their `power` output (coal 16, solar 6).
+const ROAD_ACCESS_RADIUS := 2
+const PLANT_RADIUS_MIN := 5
+const PLANT_RADIUS_MAX := 16
+
+var _plants := {}            # plant origin -> radiation radius in tiles
+
 
 class Cell:
 	var terrain := ""            # terrain tile id
@@ -59,6 +69,8 @@ class Cell:
 	var obj_variant := 0
 	var obj_origin := Vector2i() # origin cell of the object covering this cell
 	var obj_size := Vector2i.ONE # footprint of that object
+	var served_road := false     # a road lies within ROAD_ACCESS_RADIUS (zoned cells)
+	var served_power := false    # a power plant covers this cell (zoned cells)
 
 
 func _ready() -> void:
@@ -334,6 +346,9 @@ func place(tile_id: String, origin: Vector2i, charge := true) -> bool:
 	if charge:
 		_funds -= price
 	_population += int(tile.get("inhabitants", 0))
+	if _is_power_plant(tile):
+		_plants[origin] = _plant_radius(tile)
+		_update_power_service(origin, _plants[origin], false)
 	stats_changed.emit()
 	_flush()
 	return true
@@ -358,6 +373,10 @@ func demolish(cell: Vector2i) -> bool:
 			c.obj_size = Vector2i.ONE
 			_mark(obj_origin + Vector2i(dx, dy))
 	_population -= int(demolished.get("inhabitants", 0))
+	if _plants.has(obj_origin):
+		var radius: int = _plants[obj_origin]
+		_plants.erase(obj_origin)
+		_update_power_service(obj_origin, radius, true)
 	stats_changed.emit()
 	_flush()
 	return true
@@ -429,6 +448,7 @@ func place_road(road_id: String, cell: Vector2i) -> bool:
 	for n: Vector2i in [cell + Vector2i(0, -1), cell + Vector2i(1, 0), cell + Vector2i(0, 1), cell + Vector2i(-1, 0)]:
 		if is_road(n):
 			_refresh_road_frame(n)
+	_update_road_service(cell)
 	roads_changed.emit()
 	_flush()
 	return true
@@ -442,6 +462,7 @@ func remove_road(cell: Vector2i) -> bool:
 	for n: Vector2i in [cell + Vector2i(0, -1), cell + Vector2i(1, 0), cell + Vector2i(0, 1), cell + Vector2i(-1, 0)]:
 		if is_road(n):
 			_refresh_road_frame(n)
+	_update_road_service(cell)
 	roads_changed.emit()
 	_flush()
 	return true
@@ -484,6 +505,7 @@ func paint_zone(cell: Vector2i, zone_id: String) -> bool:
 	if c.zone == zone_id:
 		return false
 	c.zone = zone_id
+	_eval_cell_services(cell)
 	_mark(cell)
 	_flush()
 	return true
@@ -500,14 +522,16 @@ func clear_zone(cell: Vector2i) -> bool:
 
 
 ## Growth tick: a few random zoned empty cells spawn a matching building.
-## Buildings only grow on flat, buildable ground without roads.
+## Buildings only grow on flat, buildable ground without roads, served by
+## both a nearby road and a power plant.
 func grow_zones(max_spawns: int = 3) -> void:
 	var candidates: Array[Vector2i] = []
 	for y in map_size:
 		for x in map_size:
 			var cell_pos := Vector2i(x, y)
 			var c := _cell(cell_pos)
-			if c.zone != "" and c.obj == "" and c.road == "":
+			if c.zone != "" and c.obj == "" and c.road == "" \
+					and c.served_road and c.served_power:
 				candidates.append(cell_pos)
 	if candidates.is_empty():
 		return
@@ -523,6 +547,100 @@ func grow_zones(max_spawns: int = 3) -> void:
 		var building: String = pool[_rng.randi_range(0, pool.size() - 1)]
 		if place(building, cell_pos, false):
 			spawned += 1
+
+
+# -- Services (road access + power) -------------------------------------------
+
+func _is_power_plant(tile: Dictionary) -> bool:
+	return tile.get("category", "") == "Power" and int(tile.get("power", 0)) > 0
+
+
+func _plant_radius(tile: Dictionary) -> int:
+	return clampi(int(tile.get("power", 0)) / 25, PLANT_RADIUS_MIN, PLANT_RADIUS_MAX)
+
+
+## Recomputes served_road for the zoned cells around a road change. The
+## incremental radius keeps drag-painting cheap (no full-map scans).
+func _update_road_service(center: Vector2i) -> void:
+	for dy in range(-ROAD_ACCESS_RADIUS, ROAD_ACCESS_RADIUS + 1):
+		for dx in range(-ROAD_ACCESS_RADIUS, ROAD_ACCESS_RADIUS + 1):
+			var pos := center + Vector2i(dx, dy)
+			if not in_bounds(pos):
+				continue
+			var c := _cell(pos)
+			if c.zone == "":
+				continue
+			_set_road_flag(c, pos)
+
+
+func _set_road_flag(c: Cell, pos: Vector2i) -> void:
+	var served := false
+	for ddy in range(-ROAD_ACCESS_RADIUS, ROAD_ACCESS_RADIUS + 1):
+		for ddx in range(-ROAD_ACCESS_RADIUS, ROAD_ACCESS_RADIUS + 1):
+			if is_road(pos + Vector2i(ddx, ddy)):
+				served = true
+				break
+		if served:
+			break
+	if served != c.served_road:
+		c.served_road = served
+		_mark(pos)
+
+
+## Propagates (or retracts) a plant's coverage; on removal every cell in
+## range is re-checked against the remaining plants.
+func _update_power_service(plant_pos: Vector2i, radius: int, removed: bool) -> void:
+	for dy in range(-radius, radius + 1):
+		for dx in range(-radius, radius + 1):
+			var pos := plant_pos + Vector2i(dx, dy)
+			if not in_bounds(pos):
+				continue
+			var c := _cell(pos)
+			if c.zone == "":
+				continue
+			if not removed:
+				if not c.served_power:
+					c.served_power = true
+					_mark(pos)
+				continue
+			var served := false
+			for other_pos: Vector2i in _plants:
+				if maxi(absi(other_pos.x - pos.x), absi(other_pos.y - pos.y)) <= _plants[other_pos]:
+					served = true
+					break
+			if served != c.served_power:
+				c.served_power = served
+				_mark(pos)
+
+
+## Evaluates both flags for one freshly zoned cell.
+func _eval_cell_services(pos: Vector2i) -> void:
+	var c := _cell(pos)
+	_set_road_flag(c, pos)
+	var served := false
+	for plant_pos: Vector2i in _plants:
+		if maxi(absi(plant_pos.x - pos.x), absi(plant_pos.y - pos.y)) <= _plants[plant_pos]:
+			served = true
+			break
+	c.served_power = served
+
+
+## Number of zoned cells missing road access or power (debug / city advisor).
+func unserved_zone_count() -> int:
+	var count := 0
+	for y in map_size:
+		for x in map_size:
+			var c := _cell(Vector2i(x, y))
+			if c.zone != "" and not (c.served_road and c.served_power):
+				count += 1
+	return count
+
+
+func is_cell_served(cell: Vector2i) -> bool:
+	if not in_bounds(cell):
+		return false
+	var c := _cell(cell)
+	return c.served_road and c.served_power
 
 
 # -- Hover ----------------------------------------------------------------
@@ -689,14 +807,17 @@ func _draw_road(canvas: CanvasItem, cell_pos: Vector2i, cell: Cell) -> void:
 	canvas.draw_texture_rect_region(texture, _ground_rect(region, cell_screen_pos(cell_pos)), region)
 
 
-## Zone overlay: drawn lifted with the tile, under any building.
+## Zone overlay: drawn lifted with the tile, under any building. Zones
+## missing road access or power show up darkened (SimCity visual language).
 func _draw_zone(canvas: CanvasItem, cell_pos: Vector2i, cell: Cell) -> void:
 	var tile := catalog.get_tile(cell.zone)
 	var texture := catalog.get_texture(tile)
 	if texture == null:
 		return
 	var region := catalog.get_region(tile, texture.get_height(), 0)
-	canvas.draw_texture_rect_region(texture, _ground_rect(region, cell_screen_pos(cell_pos)), region)
+	var tint := Color(1, 1, 1) if cell.served_road and cell.served_power \
+			else Color(0.45, 0.5, 0.62)
+	canvas.draw_texture_rect_region(texture, _ground_rect(region, cell_screen_pos(cell_pos)), region, tint)
 
 
 func _draw_object(canvas: CanvasItem, cell: Cell) -> void:

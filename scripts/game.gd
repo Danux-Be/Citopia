@@ -75,9 +75,9 @@ func _process(delta: float) -> void:
 			var img := get_viewport().get_texture().get_image()
 			img.save_png("/tmp/citopia_shot.png")
 			var traffic := $Traffic as Traffic
-			print("DEBUG roads=%d vehicles=%d target=%d pop=%d funds=%d" % [
+			print("DEBUG roads=%d vehicles=%d target=%d pop=%d funds=%d unserved=%d" % [
 				traffic.road_count(), traffic.get_child_count(), traffic.target_fleet(),
-				iso_map.get_population(), iso_map.get_funds()])
+				iso_map.get_population(), iso_map.get_funds(), iso_map.unserved_zone_count()])
 			print("SHOT_SAVED")
 			get_tree().quit()
 	var over_ui := get_viewport().gui_get_hovered_control() != null
@@ -161,6 +161,8 @@ func _place_demo_village() -> void:
 		iso_map.place_road("road_paved", Vector2i(41, y))
 		iso_map.place_road("road_paved", Vector2i(47, y))
 		iso_map.place_road("road_paved", Vector2i(53, y))
+	# coal plant west of town: its coverage powers the whole village
+	_place_near("pow_5x5_Kohlekraftwerk_Durnrohr_FN", Vector2i(33, 46))
 	var placements: Array = [
 		["res_1x1_AnconaHome", Vector2i(41, 48)],
 		["res_2x2_AnnasHouse", Vector2i(44, 47)],
@@ -181,9 +183,13 @@ func _place_demo_village() -> void:
 	for x in range(45, 49):
 		for y in range(52, 55):
 			iso_map.paint_zone(Vector2i(x, y), "zone_commercial_medium")
-	for x in range(50, 55):
+	for x in range(50, 54):
 		for y in range(52, 55):
 			iso_map.paint_zone(Vector2i(x, y), "zone_industrial_medium")
+	# a far patch, off the road grid: it stays dark and never grows
+	for x in range(38, 42):
+		for y in range(60, 63):
+			iso_map.paint_zone(Vector2i(x, y), "zone_residential_medium")
 
 
 ## Places a tile at `center`, or on the closest valid cell nearby.

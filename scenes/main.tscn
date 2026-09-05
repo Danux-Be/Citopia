@@ -46,4 +46,5 @@ theme_override_colors/font_color = Color(1, 1, 1, 0.85)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 0.8)
 theme_override_constants/outline_size = 4
 text = "Citopia 0.3 — WASD/arrows: camera · wheel: zoom · right-drag: pan
-Pick a tool below (roads paint by dragging), left-click to build, ESC to clear"
+Pick a tool below (roads paint by dragging), left-click to build, ESC to clear
+Zones grow only when served: road within 2 tiles + power plant coverage"
