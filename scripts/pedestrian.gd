@@ -7,7 +7,7 @@ extends Node2D
 ## at this scale that reads as a lively sidewalk.
 
 const BOB_INTERVAL := 0.16    # seconds per step half-cycle
-const CURB_OFFSET := 0.34     # fraction of a cell right of the heading (curb line)
+const CURB_PX := 10.0         # screen px right of the road centre line (curb line)
 const PAUSE_CHANCE := 0.06    # chance to stop for a moment at each corner
 
 var iso_map: IsoMap
@@ -52,9 +52,12 @@ func _process(delta: float) -> void:
 		_bob_timer = BOB_INTERVAL
 		_bob = not _bob  # the step: 1 px bounce while on the move
 	var dir := cur_cell - prev_cell
-	var curb := Vector2(-dir.y, dir.x) * CURB_OFFSET
-	var p := Vector2(prev_cell).lerp(Vector2(cur_cell), t) + curb
-	position = iso_map.iso_to_screen(p.x, p.y)
+	# curb offset in SCREEN space (see vehicle.gd: world perpendiculars
+	# skew under the isometric projection)
+	var heading := (iso_map.iso_to_screen(cur_cell.x, cur_cell.y)
+			- iso_map.iso_to_screen(prev_cell.x, prev_cell.y)).normalized()
+	var p := Vector2(prev_cell).lerp(Vector2(cur_cell), t)
+	position = iso_map.iso_to_screen(p.x, p.y) + Vector2(-heading.y, heading.x) * CURB_PX
 	_update_z(prev_cell if t < 0.5 else cur_cell)
 	queue_redraw()
 

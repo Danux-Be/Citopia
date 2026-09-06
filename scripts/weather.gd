@@ -10,7 +10,7 @@ extends CanvasLayer
 const DRY_RANGE := Vector2(90.0, 260.0)    # seconds of clear sky between showers
 const RAIN_RANGE := Vector2(35.0, 110.0)   # shower length
 const THUNDER_RANGE := Vector2(12.0, 40.0) # thunderclap spacing during a shower
-const TINT_ALPHA := 0.16                   # shower gloom
+const TINT_ALPHA := 0.34                   # shower gloom
 const FLASH_PEAK := 0.45                   # lightning brightness
 const TINT_SPEED := 0.25                   # alpha per second
 const AUDIO_FADE_DB := 36.0                # volume slide per second
@@ -112,7 +112,9 @@ func _thunder_clap() -> void:
 
 func _build_visuals() -> void:
 	_tint = ColorRect.new()
-	_tint.color = Color(0.45, 0.5, 0.62, 0.0)
+	# dark slate: source-over with a DARK color dims the whole scene — the
+	# previous bluish-gray brightened dark tiles (water read brighter in rain!)
+	_tint.color = Color(0.16, 0.19, 0.30, 0.0)
 	_tint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_tint.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(_tint)

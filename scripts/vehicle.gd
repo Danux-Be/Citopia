@@ -7,7 +7,8 @@ extends Node2D
 ## recomputed each frame so it slots between the map's diagonal layers.
 
 const FRAME := 28
-const LANE_OFFSET := 0.18   # lane center, as a fraction of a cell to the right
+const LANE_PX := 6.0        # lane centre, screen px right of the road centre line
+const CAR_PIVOT_Y := 16.5   # the car's pixels sit low in its 28 px frame
 const BASE_SPEED := 2.2     # cells per second, before the per-vehicle cruise roll
 const ACCEL := 4.0          # cells/s^2 towards the frame's speed cap
 const BRAKE := 10.0         # braking is firmer than engine response
@@ -109,10 +110,12 @@ func _process(delta: float) -> void:
 		trip_finished.emit(self)
 		return
 
-	var dir := b - a
-	var lane := Vector2(-dir.y, dir.x) * LANE_OFFSET  # right-hand side of the heading
-	var p := Vector2(a).lerp(Vector2(b), t) + lane
-	position = iso_map.iso_to_screen(p.x, p.y)
+	# lane offset in SCREEN space: the isometric projection does not keep
+	# world perpendiculars perpendicular, and a world-space offset made cars
+	# drift off the lane line depending on their heading
+	var heading := (iso_map.iso_to_screen(b.x, b.y) - iso_map.iso_to_screen(a.x, a.y)).normalized()
+	var p := Vector2(a).lerp(Vector2(b), t)
+	position = iso_map.iso_to_screen(p.x, p.y) + Vector2(-heading.y, heading.x) * LANE_PX
 	_update_z(a if t < 0.5 else b)
 	queue_redraw()
 
@@ -145,4 +148,6 @@ func _draw() -> void:
 	var frame_idx: int = color_index * 4 + int(DIR_FRAMES.get(dir, 0))
 	var region := Rect2(frame_idx * FRAME, 0, FRAME, FRAME)
 	var half := FRAME * 0.5 * _draw_scale
-	draw_texture_rect_region(_texture, Rect2(-half, -half, FRAME * _draw_scale, FRAME * _draw_scale), region, _tint)
+	# pivot on the car's pixel centre so wheels sit on the lane line
+	var off := Vector2(0.0, (CAR_PIVOT_Y - FRAME * 0.5) * _draw_scale)
+	draw_texture_rect_region(_texture, Rect2(-half, -half + off.y, FRAME * _draw_scale, FRAME * _draw_scale), region, _tint)

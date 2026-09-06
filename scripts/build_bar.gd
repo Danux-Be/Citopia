@@ -19,12 +19,10 @@ const LOWER_ICON := "res://assets/images/ui/buttons/lowerTerrain.png"
 const LEVEL_ICON := "res://assets/images/ui/buttons/levelTerrain.png"
 const ICON_SIZE := 40.0
 
-## Tab title -> legacy database categories.
+## Tab title -> legacy database categories. Residential/Commercial/Industrial
+## buildings are NOT placeable: they grow on their own from the zoning tools.
 const CATEGORY_TABS := {
 	"Transportation": ["Roads", "Trains"],
-	"Residential": ["Residential"],
-	"Commercial": ["Commercial"],
-	"Industrial": ["Industrial", "Farm"],
 	"Power": ["Power"],
 	"Utilities": ["Waterworks"],
 	"Services": ["Emergency", "School"],

@@ -3,7 +3,7 @@ extends Camera2D
 
 ## Pan (WASD / arrows / middle-or-right drag) and wheel zoom towards cursor.
 
-const ZOOM_MIN := 0.5
+const ZOOM_MIN := 0.35
 const ZOOM_MAX := 4.0
 const ZOOM_STEP := 1.15
 const PAN_SPEED := 900.0
@@ -12,7 +12,9 @@ var _dragging := false
 
 
 func _ready() -> void:
-	zoom = Vector2(1.0, 1.0)
+	# five wheel clicks out from 1.0 (1.0 / 1.15^5 ~= 0.5): see enough of
+	# the city at start, zoom in for the details
+	zoom = Vector2(0.5, 0.5)
 	# center on the middle of the default 96x96 map
 	position = Vector2(0, 96 * IsoMap.TILE_H * 0.5)
 	make_current()

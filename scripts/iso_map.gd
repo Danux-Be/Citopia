@@ -58,17 +58,12 @@ const ROAD_DIR_BIT := {
 	Vector2i(0, -1): 2, Vector2i(1, 0): 1,
 	Vector2i(0, 1): 8, Vector2i(-1, 0): 4,
 }
-## Connection mask -> sheet frame. Singles use the native half tiles (the
-## legacy dead-end art); corner masks 3/6/9/12 have no bit-identity frame of
-## their own and live at 16-19; every other mask is its own frame index.
-const ROAD_FRAME_BY_MASK := {
-	0: 0,
-	1: 3, 2: 6, 4: 12, 8: 9,           # dead ends
-	5: 5, 10: 10,                      # straights (dashed centre line)
-	3: 16, 12: 17, 9: 18, 6: 19,       # corners
-	7: 7, 11: 11, 13: 13, 14: 14,      # T junctions
-	15: 15,                            # full cross
-}
+## The legacy road sheets are bit-identity (verified against the original
+## Cytopia TileOrientation enum): frame index == connection mask. Frames
+## 16-19 are full RECT pads, never corners — our earlier mapping drew
+## solid squares at every turn.
+func road_frame(mask: int) -> int:
+	return mask
 
 # -- Zone growth requirements -------------------------------------------------
 # A zoned cell only grows a building when it is served: a road within
@@ -164,11 +159,62 @@ func generate_map(params: Dictionary = {}) -> void:
 			cell.terrain_variant = catalog.pick_variant(catalog.get_tile(cell.terrain))
 			_cells[x + y * map_size] = cell
 
+	_erosion_swamp()
 	_place_water_flora()
+	_place_trees()
 	_place_ships()
 	_population = 0
 	_rebuild_diagonals()
 	roads_changed.emit()
+
+
+## Swamp pockets from raw noise come out as scattered single cells, which
+## pockmark the land with lone water tiles (unnatural corner shores). Erode
+## any murky cell with fewer than two murky neighbours until stable, so only
+## genuine clusters survive.
+func _erosion_swamp() -> void:
+	var changed := true
+	var passes := 0
+	while changed and passes < 6:
+		changed = false
+		passes += 1
+		for y in map_size:
+			for x in map_size:
+				var cell_pos := Vector2i(x, y)
+				if _cell(cell_pos).terrain != "liquid_MurkyWater":
+					continue
+				var wet := 0
+				for n in [Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0), Vector2i(0, -1),
+						Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1)]:
+					if is_water_cell(cell_pos + n) and _cell(cell_pos + n).terrain == "liquid_MurkyWater":
+						wet += 1
+				if wet < 2:
+					_cell(cell_pos).terrain = "water"  # stays water: joins the lake
+					changed = true
+
+
+## Real trees from the legacy flora sheets on forest cells (which otherwise
+## read as "different grass"). Trees are cell objects: bulldozable, and they
+## block building/zone placement until cleared.
+func _place_trees() -> void:
+	var pool: Array[String] = []
+	for id in catalog.get_ids_by_category("Flora"):
+		if id.begins_with("tree_") and not id.contains("Chopped"):
+			pool.append(id)
+	if pool.is_empty():
+		return
+	for y in map_size:
+		for x in map_size:
+			var cell_pos := Vector2i(x, y)
+			var cell := _cell(cell_pos)
+			if cell.terrain != "terrain_grass_forest" or _rng.randf() > 0.30:
+				continue
+			cell.terrain = "terrain_grass"  # the tree object draws over plain grass
+			cell.terrain_variant = catalog.pick_variant(catalog.get_tile(cell.terrain))
+			cell.obj = pool[_rng.randi_range(0, pool.size() - 1)]
+			cell.obj_origin = cell_pos
+			cell.obj_size = Vector2i.ONE
+			cell.obj_variant = catalog.pick_variant(catalog.get_tile(cell.obj))
 
 
 ## Fraction of the map under water -> noise cut, calibrated on FastNoiseLite
@@ -309,9 +355,9 @@ func find_dry_rect(w: int, h: int) -> Vector2i:
 	return best
 
 
-## Turn the water cells of a rect into plain grass (demo siting). Ships
-## moored inside the rect are relocated to open water so the village never
-## splits around a hull pond.
+## Turn the water cells of a rect into plain grass and strip vegetation
+## (demo siting). Ships moored inside the rect are relocated to open water
+## so the village never splits around a hull pond.
 func carve_to_dry(origin: Vector2i, w: int, h: int) -> void:
 	var changed := false
 	var evicted := 0
@@ -319,15 +365,16 @@ func carve_to_dry(origin: Vector2i, w: int, h: int) -> void:
 		for dx in w:
 			var cell_pos := origin + Vector2i(dx, dy)
 			var cell := _cell(cell_pos)
-			if cell.terrain not in WATER_TERRAINS:
-				continue
-			if cell.obj.begins_with("BD_"):
-				evicted += 1  # counts hull cells; cleared below via its origin
-				continue
-			cell.terrain = "terrain_grass"
-			cell.terrain_variant = catalog.pick_variant(catalog.get_tile(cell.terrain))
-			cell.obj = ""  # shore flora of the dried puddle goes too
-			changed = true
+			if cell.terrain in WATER_TERRAINS:
+				if cell.obj.begins_with("BD_"):
+					evicted += 1  # counts hull cells; cleared below via its origin
+					continue
+				cell.terrain = "terrain_grass"
+				cell.terrain_variant = catalog.pick_variant(catalog.get_tile(cell.terrain))
+				changed = true
+			if cell.obj != "" and not cell.obj.begins_with("BD_"):
+				cell.obj = ""  # flora and trees of the building site go too
+				changed = true
 	if evicted > 0:
 		_clear_ships_in_rect(origin, w, h)
 		changed = true
@@ -676,7 +723,7 @@ func _refresh_road_frame(cell: Vector2i) -> void:
 	for n: Vector2i in ROAD_DIR_BIT:
 		if is_road(cell + n):
 			mask |= ROAD_DIR_BIT[n]
-	_cell(cell).road_variant = ROAD_FRAME_BY_MASK[mask]
+	_cell(cell).road_variant = road_frame(mask)
 	_mark(cell)
 
 
