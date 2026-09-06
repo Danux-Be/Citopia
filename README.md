@@ -64,8 +64,12 @@ open, on a modern and moddable engine.
   centre lines on straights and truncated side-arm lines at junctions all
   line up (the 24-frame road sheets were decoded frame by frame). Cars
   drive the network with BFS pathfinding, right-hand lanes and a fleet
-  that scales with population. Maps are flat for now while traffic gets
-  polished (the Hills slider is disabled in the map editor)
+  that scales with population — and they obey the rules of the road:
+  priority to the right at intersections, gentle braking behind slower
+  traffic (queues form naturally), slow-downs on turns and junction
+  approaches, and a deadlock-breaker timeout so crossings never gridlock.
+  Every car also has its own top speed and acceleration. Maps are flat
+  for now (the Hills slider is disabled in the map editor)
 - 🖥️ **Game UI**: top bar with in-game date and pause/speed controls,
   live population and funds, mini RCI indicator, minimap with camera
   viewport (click to jump), build bar with category tabs browsing the

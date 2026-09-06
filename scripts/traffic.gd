@@ -8,6 +8,14 @@ extends Node2D
 const MAX_VEHICLES := 14
 const SPAWN_INTERVAL := 1.6
 
+## Driving rules (distances are fractions of a cell).
+const JUNCTION_SLOW := 0.65    # top speed cap while closing on a junction cell
+const TURN_SLOW := 0.55        # top speed cap while closing on a turn
+const DECISION_DIST := 0.45    # start yielding when this close to the junction
+const YIELD_TIMEOUT := 3.0     # stopped this long -> ignore right-of-way (no gridlock)
+const FOLLOW_MIN_GAP := 0.30   # full stop when a car ahead is closer than this
+const FOLLOW_FREE_GAP := 0.55  # no constraint beyond this gap
+
 const SHEET := "res://assets/images/vehicles/vehicles.png"
 const FRAME := 28
 const COLOR_COUNT := 6
@@ -55,6 +63,7 @@ func _on_network(vehicle: Vehicle) -> bool:
 func _process(delta: float) -> void:
 	if iso_map == null:
 		return
+	_regulate()
 	_spawn_timer -= delta
 	if _spawn_timer > 0.0:
 		return
@@ -64,6 +73,88 @@ func _process(delta: float) -> void:
 		_despawn(_vehicles[0])
 	if _vehicles.size() < target:
 		_spawn_one()
+
+
+## Per-frame speed caps: car following, junction approach, priority to the
+## right. Runs before the vehicles integrate their movement.
+func _regulate() -> void:
+	for v in _vehicles:
+		v.speed_factor = 1.0
+		if v.path.size() < 2 or v.path_i >= v.path.size() - 1:
+			continue
+		var factor := _follow_factor(v)
+		var approaching := is_junction(v.seg_to())
+		if not approaching:
+			v.ignore_yield = false  # junction behind: fresh right-of-way next time
+		if approaching:
+			# close to a crossing: everyone slows, and only those with
+			# right-of-way (or a deadlock timeout) may enter
+			factor = minf(factor, JUNCTION_SLOW)
+			if 1.0 - v.t <= DECISION_DIST:
+				if v.wait_time >= YIELD_TIMEOUT:
+					v.ignore_yield = true  # latch: commit instead of creeping
+				if _junction_occupied(v, v.seg_to()):
+					factor = 0.0  # someone is crossing: they always win
+				elif not v.ignore_yield and _must_yield(v):
+					factor = 0.0  # priorité à droite
+		elif v.path_i < v.path.size() - 2 and v.t > 0.5 \
+				and v.path[v.path_i + 2] - v.seg_to() != v.dir():
+			factor = minf(factor, TURN_SLOW)
+		v.speed_factor = factor
+
+
+## Gap to the nearest vehicle ahead on the same or the next segment,
+## mapped to a 0..1 speed cap so queues form instead of overlaps.
+func _follow_factor(v: Vehicle) -> float:
+	var factor := 1.0
+	for other in _vehicles:
+		if other == v or other.path.size() < 2 or other.path_i >= other.path.size() - 1:
+			continue
+		var gap := -1.0
+		if other.seg_from() == v.seg_from() and other.seg_to() == v.seg_to() and other.t > v.t:
+			gap = other.t - v.t
+		elif other.seg_from() == v.seg_to() and other.seg_to() == v.seg_to() + v.dir():
+			gap = (1.0 - v.t) + other.t
+		if gap >= 0.0:
+			factor = minf(factor, clampf(
+					(gap - FOLLOW_MIN_GAP) / (FOLLOW_FREE_GAP - FOLLOW_MIN_GAP), 0.0, 1.0))
+	return factor
+
+
+## A road cell with 3+ connections (T junction or crossroads).
+func is_junction(cell: Vector2i) -> bool:
+	if not _roads.has(cell):
+		return false
+	var links := 0
+	for n: Vector2i in [Vector2i(0, -1), Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0)]:
+		if _roads.has(cell + n):
+			links += 1
+	return links >= 3
+
+
+## Is another vehicle committed to and still inside the junction v
+## approaches? Only cars already crossing count: cars waiting at the
+## entrance also straddle the junction cell (braking overshoot) but must
+## never block each other.
+func _junction_occupied(v: Vehicle, junction: Vector2i) -> bool:
+	for other in _vehicles:
+		if other != v and other.seg_from() == junction and other.t < 0.5:
+			return true
+	return false
+
+
+## Right-of-way: v yields to anyone entering the same junction from its
+## right-hand side. right(dir) = (-dir.y, dir.x), so a vehicle driving in
+## direction -right(v.dir) comes from v's right.
+func _must_yield(v: Vehicle) -> bool:
+	var d := v.dir()
+	var from_right := Vector2i(d.y, -d.x)
+	for other in _vehicles:
+		if other == v or other.path.size() < 2 or other.path_i >= other.path.size() - 1:
+			continue
+		if other.seg_to() == v.seg_to() and other.dir() == from_right and other.t > 0.3:
+			return true
+	return false
 
 
 ## Fleet size follows the city: a couple of passers-by as soon as there is a
@@ -80,12 +171,18 @@ func _spawn_one() -> void:
 	var path := _longest_of_candidates(start)
 	if path.size() < 2:
 		return
+	spawn_on_path(path)
+
+
+## Put a vehicle on an explicit cell path (also the test seam).
+func spawn_on_path(path: Array[Vector2i]) -> Vehicle:
 	var vehicle := Vehicle.new()
 	vehicle.trip_finished.connect(_on_trip_finished)
 	add_child(vehicle)
 	_vehicles.append(vehicle)
 	vehicle.setup(iso_map, _sheet, _next_color % COLOR_COUNT, path)
 	_next_color += 1
+	return vehicle
 
 
 ## Sample a few random goals and keep the longest route: trips spread over
@@ -143,6 +240,14 @@ func road_count() -> int:
 
 func target_fleet() -> int:
 	return _target_fleet()
+
+
+func stopped_count() -> int:
+	var count := 0
+	for v in _vehicles:
+		if v.speed < 0.15:
+			count += 1
+	return count
 
 
 ## Breadth-first search over the 4-connected road grid. Returns the cell

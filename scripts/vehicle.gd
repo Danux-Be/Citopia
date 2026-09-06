@@ -8,7 +8,9 @@ extends Node2D
 
 const FRAME := 28
 const LANE_OFFSET := 0.18   # lane center, as a fraction of a cell to the right
-const BASE_SPEED := 2.2     # cells per second
+const BASE_SPEED := 2.2     # cells per second, before the per-vehicle cruise roll
+const ACCEL := 4.0          # cells/s^2 towards the frame's speed cap
+const BRAKE := 10.0         # braking is firmer than engine response
 
 ## world direction -> sheet direction index (E, S, W, N)
 const DIR_FRAMES := {
@@ -16,7 +18,11 @@ const DIR_FRAMES := {
 }
 
 var iso_map: IsoMap
-var speed_scale := 1.0
+var cruise := BASE_SPEED    # personal top speed; rolled once per trip
+var speed := BASE_SPEED     # current speed, cells per second
+var speed_factor := 1.0     # 0..1 cap recomputed by Traffic every frame
+var wait_time := 0.0        # seconds fully stopped (unlocks the yield timeout)
+var ignore_yield := false   # latched: timeout expired, commit to crossing
 var color_index := 0
 var path: Array[Vector2i] = []
 var path_i := 0
@@ -34,7 +40,11 @@ func setup(p_iso_map: IsoMap, p_texture: Texture2D, p_color: int, p_path: Array[
 	path = p_path
 	path_i = 0
 	t = 0.0
-	speed_scale = randf_range(0.85, 1.15)
+	cruise = BASE_SPEED * randf_range(0.85, 1.15)  # everyone drives a bit differently
+	speed = cruise
+	speed_factor = 1.0
+	wait_time = 0.0
+	ignore_yield = false
 	var start := path[0]
 	position = iso_map.iso_to_screen(start.x, start.y)
 	_update_z(start)
@@ -49,7 +59,14 @@ func _process(delta: float) -> void:
 	if not iso_map.is_road(a) or not iso_map.is_road(b):
 		trip_finished.emit(self)
 		return
-	t += BASE_SPEED * speed_scale * delta
+	var target := cruise * clampf(speed_factor, 0.0, 1.0)
+	speed = move_toward(speed, target, (BRAKE if target < speed else ACCEL) * delta)
+	# count standing still: Traffic uses this to break priority deadlocks
+	if speed < 0.15 and speed_factor < 0.2:
+		wait_time += delta
+	else:
+		wait_time = 0.0
+	t += speed * delta
 	while t >= 1.0 and path_i < path.size() - 2:
 		t -= 1.0
 		path_i += 1
@@ -68,6 +85,23 @@ func _process(delta: float) -> void:
 	position = iso_map.iso_to_screen(p.x, p.y)
 	_update_z(a if t < 0.5 else b)
 	queue_redraw()
+
+
+func seg_from() -> Vector2i:
+	return path[path_i]
+
+
+func seg_to() -> Vector2i:
+	return path[path_i + 1]
+
+
+func dir() -> Vector2i:
+	return path[path_i + 1] - path[path_i]
+
+
+## The cell the sprite currently straddles the centre of.
+func cell_now() -> Vector2i:
+	return path[path_i] if t < 0.5 else path[path_i + 1]
 
 
 func _update_z(cell: Vector2i) -> void:
