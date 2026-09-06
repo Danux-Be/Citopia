@@ -6,3 +6,5 @@ export_presets.cfg
 # System
 .DS_Store
 *.tmp
+.citopia_discord_webhook
+tools/*.local
