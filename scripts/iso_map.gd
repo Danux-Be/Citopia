@@ -75,6 +75,7 @@ const PLANT_RADIUS_MAX := 16
 const ABANDON_GRACE := 20.0   # seconds unserved before a grown building collapses
 
 var _plants := {}            # plant origin -> radiation radius in tiles
+var _disabled_plants := {}   # plant origin -> true during a storm blackout
 var _abandoning := {}        # cell pos -> seconds left before collapse
 
 
@@ -93,6 +94,7 @@ class Cell:
 	var served_power := false    # a power plant covers this cell (zoned cells)
 	var grown := false           # building spawned by zone growth (service required)
 	var abandoned := false       # grown building that lost road/power service
+	var burning := false         # struck by lightning: burns down shortly
 
 
 func _ready() -> void:
@@ -846,6 +848,8 @@ func _update_power_service(plant_pos: Vector2i, radius: int, removed: bool) -> v
 				continue
 			var served := false
 			for other_pos: Vector2i in _plants:
+				if _disabled_plants.has(other_pos):
+					continue  # a storm-blackouted plant powers nothing
 				if maxi(absi(other_pos.x - pos.x), absi(other_pos.y - pos.y)) <= _plants[other_pos]:
 					served = true
 					break
@@ -861,10 +865,56 @@ func _eval_cell_services(pos: Vector2i) -> void:
 	_set_road_flag(c, pos)
 	var served := false
 	for plant_pos: Vector2i in _plants:
+		if _disabled_plants.has(plant_pos):
+			continue
 		if maxi(absi(plant_pos.x - pos.x), absi(plant_pos.y - pos.y)) <= _plants[plant_pos]:
 			served = true
 			break
 	c.served_power = served
+
+
+## Storm blackout: a plant stops powering anything until re-enabled.
+func set_plant_disabled(origin: Vector2i, disabled: bool) -> void:
+	if not _plants.has(origin) or _disabled_plants.has(origin) == disabled:
+		return
+	if disabled:
+		_disabled_plants[origin] = true
+		_update_power_service(origin, _plants[origin], true)
+	else:
+		_disabled_plants.erase(origin)
+		_update_power_service(origin, _plants[origin], false)
+	stats_changed.emit()
+
+
+func plant_origins() -> Array:
+	return _plants.keys()
+
+
+## Origin of a random live zone-grown building, for lightning fires.
+func random_grown_building() -> Vector2i:
+	var candidates: Array[Vector2i] = []
+	for y in map_size:
+		for x in map_size:
+			var pos := Vector2i(x, y)
+			var c := _cell(pos)
+			if c.grown and not c.abandoned and c.obj_origin == pos:
+				candidates.append(pos)
+	if candidates.is_empty():
+		return Vector2i(-1, -1)
+	return candidates[_rng.randi_range(0, candidates.size() - 1)]
+
+
+## Fire state of a building: its whole footprint tints orange while burning.
+func set_burning(origin: Vector2i, burning: bool) -> void:
+	if not in_bounds(origin) or _cell(origin).obj == "":
+		return
+	var size := _cell(origin).obj_size
+	for dy in size.y:
+		for dx in size.x:
+			var pos := origin + Vector2i(dx, dy)
+			_cell(pos).burning = burning
+			_mark(pos)
+	_flush()
 
 
 ## Zone-grown buildings react to service loss: the population moves out
@@ -1256,7 +1306,11 @@ func _draw_object(canvas: CanvasItem, cell: Cell) -> void:
 	var center := iso_to_screen(origin.x + (size.x - 1) * 0.5, origin.y + (size.y - 1) * 0.5)
 	var bottom := iso_to_screen(origin.x + size.x - 1, origin.y + size.y - 1).y + TILE_H - height_at(origin) * HEIGHT_STEP
 	var rect := Rect2(center.x - region.size.x * 0.5, bottom - region.size.y, region.size.x, region.size.y)
-	var tint := Color(0.42, 0.42, 0.48) if cell.abandoned else Color(1, 1, 1)
+	var tint := Color(1, 1, 1)
+	if cell.burning:
+		tint = Color(1.0, 0.45, 0.2)  # flames: the whole footprint glows orange
+	elif cell.abandoned:
+		tint = Color(0.42, 0.42, 0.48)
 	canvas.draw_texture_rect_region(texture, rect, region, tint)
 
 

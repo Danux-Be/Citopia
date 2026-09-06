@@ -37,7 +37,22 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _process(delta: float) -> void:
 	var direction := Input.get_vector("camera_left", "camera_right", "camera_up", "camera_down")
+	# gamepad: left stick pans, triggers zoom (keyboard always keeps working)
+	if Input.get_connected_joypads().size() > 0:
+		var stick := Vector2(
+			_deadzone(Input.get_joy_axis(0, JOY_AXIS_LEFT_X)),
+			_deadzone(Input.get_joy_axis(0, JOY_AXIS_LEFT_Y)))
+		direction += stick
+		var trig := (_deadzone(Input.get_joy_axis(0, JOY_AXIS_TRIGGER_RIGHT))
+				- _deadzone(Input.get_joy_axis(0, JOY_AXIS_TRIGGER_LEFT)))
+		if absf(trig) > 0.0:
+			var factor := pow(1.08, trig * delta * 60.0 * 0.3)
+			_zoom_at_cursor(factor, get_viewport().get_visible_rect().size * 0.5)
 	position += direction * PAN_SPEED * delta / zoom.x
+
+
+func _deadzone(v: float) -> float:
+	return 0.0 if absf(v) < 0.18 else v
 
 
 func _zoom_at_cursor(factor: float, screen_anchor: Vector2) -> void:

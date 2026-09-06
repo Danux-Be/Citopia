@@ -85,7 +85,10 @@ open, on a modern and moddable engine.
 - 🌧️ **Weather**: every few minutes the sky turns — a rain shower falls
   over the city (procedural screen-space streaks, gloomy tint, CC0 rain
   loop) with occasional lightning flashes and thunderclaps, then it clears
-  up again. Force a shower for screenshots with `++ --demo --rain`
+  up again. Some showers turn into **thunderstorms**: sheets of rain, near
+  lightning strikes can knock a power plant offline (zones go dark until
+  the grid recovers) or set a grown building on fire until it burns down.
+  Force a shower for screenshots with `++ --demo --rain`
 - 🖥️ **Game UI**: top bar with in-game date and pause/speed controls,
   live population and funds, mini RCI indicator, minimap with camera
   viewport (click to jump), build bar with category tabs browsing the
@@ -94,8 +97,9 @@ open, on a modern and moddable engine.
   Water / Trees sliders with live regeneration — then Found City
 - 🎛️ **Build bar** with icons extracted from the sprite sheets
 - 🎵 **Original soundtracks**: shuffled playlist of the Cytopia OST
-- 🎥 **Smooth camera**: keyboard panning, cursor-centered mouse-wheel zoom,
-  drag to pan
+- 🎥 **Smooth camera**: keyboard panning or left stick on a connected
+  gamepad (Start pauses, D-pad picks the speed), cursor-centered
+  mouse-wheel zoom, trigger zoom, drag to pan
 - 📦 **909 sprites + 50 MB of original soundtracks** already in the repo
 
 ## Roadmap

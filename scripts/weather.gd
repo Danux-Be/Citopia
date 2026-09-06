@@ -9,8 +9,13 @@ extends CanvasLayer
 
 const DRY_RANGE := Vector2(90.0, 260.0)    # seconds of clear sky between showers
 const RAIN_RANGE := Vector2(35.0, 110.0)   # shower length
+const STORM_RANGE := Vector2(25.0, 60.0)   # thunderstorm length (rarer, meaner)
+const STORM_CHANCE := 0.18                 # share of showers that turn into storms
 const THUNDER_RANGE := Vector2(12.0, 40.0) # thunderclap spacing during a shower
+const STORM_THUNDER_RANGE := Vector2(3.0, 9.0)
+const STRIKE_CHANCE := 0.5                 # a clap may carry a city strike
 const TINT_ALPHA := 0.34                   # shower gloom
+const STORM_TINT_ALPHA := 0.48             # thunderstorm gloom
 const FLASH_PEAK := 0.45                   # lightning brightness
 const TINT_SPEED := 0.25                   # alpha per second
 const AUDIO_FADE_DB := 36.0                # volume slide per second
@@ -18,7 +23,9 @@ const AUDIO_FADE_DB := 36.0                # volume slide per second
 const RAIN_LOOP := "res://assets/audio/ambient/rain_loop.ogg"
 const THUNDER_CLAP := "res://assets/audio/ambient/thunder_clap.ogg"
 
-enum State { SUNNY, RAIN }
+enum State { SUNNY, RAIN, STORM }
+
+signal lightning_struck
 
 var state: State = State.SUNNY
 var _state_time := 0.0
@@ -46,7 +53,11 @@ func _ready() -> void:
 
 
 func is_raining() -> bool:
-	return state == State.RAIN
+	return state != State.SUNNY
+
+
+func is_storm() -> bool:
+	return state == State.STORM
 
 
 ## Jump straight to a shower (demo flag / test seam).
@@ -74,7 +85,10 @@ func _process(delta: float) -> void:
 		if _thunder_time >= _next_thunder:
 			_thunder_clap()
 	if _state_time >= _next_change:
-		_enter(State.SUNNY if state == State.RAIN else State.RAIN)
+		if state == State.SUNNY:
+			_enter(_pick_shower_kind())  # most showers are plain rain, some storm
+		else:
+			_enter(State.SUNNY)
 
 
 func _enter(next: State) -> void:
@@ -89,25 +103,48 @@ func _enter(next: State) -> void:
 			_next_thunder = -1.0
 		State.RAIN:
 			_next_change = _rng.randf_range(RAIN_RANGE.x, RAIN_RANGE.y)
-			_rain.emitting = true
-			_rain.preprocess = _rain.lifetime  # shower already falling, not ramping up
+			_set_rain_intensity(340, 1.0)
 			_tint_target = TINT_ALPHA
 			_audio_target_db = -6.0
 			if not _rain_audio.playing:
 				_rain_audio.play()
-			_schedule_thunder()
+			_schedule_thunder(THUNDER_RANGE)
+		State.STORM:
+			_next_change = _rng.randf_range(STORM_RANGE.x, STORM_RANGE.y)
+			_set_rain_intensity(720, 1.3)  # sheets of rain
+			_tint_target = STORM_TINT_ALPHA
+			_audio_target_db = -1.0
+			if not _rain_audio.playing:
+				_rain_audio.play()
+			_schedule_thunder(STORM_THUNDER_RANGE)
 
 
-func _schedule_thunder() -> void:
+## A shower has a chance to be a real thunderstorm.
+func _pick_shower_kind() -> State:
+	return State.STORM if _rng.randf() < STORM_CHANCE else State.RAIN
+
+
+func _set_rain_intensity(amount: int, velocity_scale: float) -> void:
+	_rain.emitting = false
+	_rain.amount = amount
+	_rain.initial_velocity_min = 640.0 * velocity_scale
+	_rain.initial_velocity_max = 860.0 * velocity_scale
+	_rain.preprocess = _rain.lifetime  # already falling, not ramping up
+	_rain.emitting = true
+
+
+func _schedule_thunder(range_v: Vector2) -> void:
 	_thunder_time = 0.0
-	_next_thunder = _rng.randf_range(THUNDER_RANGE.x, THUNDER_RANGE.y)
+	_next_thunder = _rng.randf_range(range_v.x, range_v.y)
 
 
 func _thunder_clap() -> void:
-	_thunder_audio.volume_db = -2.0
+	_thunder_audio.volume_db = -2.0 if state == State.STORM else -8.0
 	_thunder_audio.play()
 	_flash.color.a = FLASH_PEAK
-	_schedule_thunder()
+	if state == State.STORM and _rng.randf() < STRIKE_CHANCE:
+		lightning_struck.emit()
+	_schedule_thunder(STORM_THUNDER_RANGE if state == State.STORM else THUNDER_RANGE)
 
 
 func _build_visuals() -> void:

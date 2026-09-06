@@ -10,7 +10,8 @@ const ACCENT_GREEN := Color(0.35, 0.78, 0.47)
 const TEXT_MAIN := Color(0.92, 0.94, 0.96)
 const TEXT_DIM := Color(0.62, 0.68, 0.74)
 const START_DATE := "01/01/2002"
-const DAY_SECONDS := 0.4  # real seconds per in-game day at speed 1
+const DAY_SECONDS := 2.0        # real seconds per in-game day at speed 1
+const MINIMAP_REFRESH := 1.0    # seconds between minimap repaints
 
 var speed := 1  # 0 = paused, 1..3
 var day_count := 0.0
@@ -31,7 +32,7 @@ func _ready() -> void:
 	layer = 10
 	_iso_map = null  # wired by game.gd via setup()
 	_build_top_bar()
-	_build_minimap()
+	_build_left_dock()
 	set_speed(1)
 
 
@@ -48,7 +49,7 @@ func _process(delta: float) -> void:
 		_date_label.text = _date_string(day_count)
 	_minimap_timer -= delta
 	if _minimap_timer <= 0.0:
-		_minimap_timer = 0.5
+		_minimap_timer = MINIMAP_REFRESH
 		_redraw_minimap()
 		_minimap_frame.queue_redraw()
 
@@ -56,8 +57,8 @@ func _process(delta: float) -> void:
 func set_speed(s: int) -> void:
 	speed = s
 	get_tree().paused = false  # growth ticks are manual; pause handled in game.gd
-	for i in range(1, 4):
-		var b: Button = _top_bar.get_node("Speed%d" % i)
+	for i in range(0, 4):
+		var b: Button = _speed_row.get_node("Speed%d" % i)
 		var sb := StyleBoxFlat.new()
 		sb.bg_color = ACCENT_GREEN if i == speed else Color(0.13, 0.17, 0.23)
 		sb.set_corner_radius_all(6)
@@ -81,6 +82,7 @@ func _date_string(days: float) -> String:
 # -- Top bar ---------------------------------------------------------------
 
 var _top_bar: HBoxContainer
+var _speed_row: HBoxContainer
 
 
 func _panel_style() -> StyleBoxFlat:
@@ -105,20 +107,6 @@ func _build_top_bar() -> void:
 	_top_bar = HBoxContainer.new()
 	_top_bar.add_theme_constant_override("separation", 14)
 	bar_panel.add_child(_top_bar)
-
-	# speed controls
-	_top_bar.add_child(_make_speed_button("⏸", 0))
-	_top_bar.add_child(_make_speed_button("▶", 1, "Speed1"))
-	_top_bar.add_child(_make_speed_button("▶▶", 2, "Speed2"))
-	_top_bar.add_child(_make_speed_button("▶▶▶", 3, "Speed3"))
-
-	# date
-	_date_label = Label.new()
-	_date_label.text = START_DATE
-	_date_label.add_theme_color_override("font_color", TEXT_MAIN)
-	_top_bar.add_child(_date_label)
-
-	_top_bar.add_child(_vsep())
 
 	# city name
 	var city := Label.new()
@@ -156,6 +144,95 @@ func _make_speed_button(label: String, s: int, node_name := "") -> Button:
 		b.name = node_name
 	b.pressed.connect(func() -> void: set_speed(s))
 	return b
+
+
+## The theme font lacks clock glyphs (the pause button rendered as nothing),
+## so speed icons are drawn as tiny textures: pause, play, fast, fastest.
+func _speed_icon(kind: int) -> ImageTexture:
+	var img := Image.create(16, 16, false, Image.FORMAT_RGBA8)
+	var c := Color(0.92, 0.94, 0.96)
+	var bar := func(x0: int, x1: int) -> void:
+		for y in range(3, 13):
+			for x in range(x0, x1):
+				img.set_pixel(x, y, c)
+	var tri := func(x0: int, half_base: int) -> void:
+		for dx in range(0, half_base * 2):
+			var half_h := dx / 2
+			for y in range(8 - half_h, 8 + half_h + 1):
+				img.set_pixel(x0 + dx, y, c)
+	match kind:
+		0:
+			bar.call(4, 6)
+			bar.call(10, 12)
+		1:
+			tri.call(5, 5)
+		2:
+			tri.call(2, 3)
+			tri.call(9, 3)
+		3:
+			tri.call(1, 2)
+			tri.call(6, 2)
+			tri.call(11, 2)
+	return ImageTexture.create_from_image(img)
+
+
+func _make_speed_icon_button(s: int) -> Button:
+	var b := Button.new()
+	b.name = "Speed%d" % s
+	b.icon = _speed_icon(s)
+	b.custom_minimum_size = Vector2(46.0, 30.0)  # one size for every button
+	b.focus_mode = Control.FOCUS_NONE
+	b.pressed.connect(func() -> void: set_speed(s))
+	return b
+
+
+const MINIMAP_SIZE := 148.0
+
+## Left dock: speed controls above the minimap, the date below it.
+func _build_left_dock() -> void:
+	var dock := VBoxContainer.new()
+	dock.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	dock.position = Vector2(10, 10)
+	dock.add_theme_constant_override("separation", 6)
+
+	var speed_panel := PanelContainer.new()
+	speed_panel.add_theme_stylebox_override("panel", _panel_style())
+	_speed_row = HBoxContainer.new()
+	_speed_row.add_theme_constant_override("separation", 4)
+	for s in 4:
+		_speed_row.add_child(_make_speed_icon_button(s))
+	speed_panel.add_child(_speed_row)
+	dock.add_child(speed_panel)
+
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", _panel_style())
+
+	_minimap = TextureRect.new()
+	_minimap.custom_minimum_size = Vector2(MINIMAP_SIZE, MINIMAP_SIZE)
+	_minimap.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_minimap.stretch_mode = TextureRect.STRETCH_SCALE
+	_minimap.texture = ImageTexture.create_from_image(Image.create(96, 96, false, Image.FORMAT_RGB8))
+	_minimap.gui_input.connect(_on_minimap_input)
+	panel.add_child(_minimap)
+
+	# camera viewport rectangle, drawn over the minimap
+	_minimap_frame = Control.new()
+	_minimap_frame.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_minimap_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_minimap_frame.draw.connect(_draw_minimap_frame)
+	_minimap.add_child(_minimap_frame)
+	dock.add_child(panel)
+
+	var date_panel := PanelContainer.new()
+	date_panel.add_theme_stylebox_override("panel", _panel_style())
+	_date_label = Label.new()
+	_date_label.text = START_DATE
+	_date_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_date_label.add_theme_color_override("font_color", TEXT_MAIN)
+	date_panel.add_child(_date_label)
+	dock.add_child(date_panel)
+
+	add_child(dock)
 
 
 func _vsep() -> VSeparator:
@@ -206,30 +283,7 @@ func _refresh_stats() -> void:
 
 # -- Minimap ---------------------------------------------------------------
 
-const MINIMAP_SIZE := 148.0
-
-func _build_minimap() -> void:
 	var panel := PanelContainer.new()
-	panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	panel.position = Vector2(10, 10)
-	panel.add_theme_stylebox_override("panel", _panel_style())
-
-	_minimap = TextureRect.new()
-	_minimap.custom_minimum_size = Vector2(MINIMAP_SIZE, MINIMAP_SIZE)
-	_minimap.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	_minimap.stretch_mode = TextureRect.STRETCH_SCALE
-	_minimap.texture = ImageTexture.create_from_image(Image.create(96, 96, false, Image.FORMAT_RGB8))
-	_minimap.gui_input.connect(_on_minimap_input)
-	panel.add_child(_minimap)
-
-	# camera viewport rectangle, drawn over the minimap
-	_minimap_frame = Control.new()
-	_minimap_frame.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_minimap_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_minimap_frame.draw.connect(_draw_minimap_frame)
-	_minimap.add_child(_minimap_frame)
-
-	add_child(panel)
 
 
 func _redraw_minimap() -> void:
@@ -243,36 +297,36 @@ func _redraw_minimap() -> void:
 		_minimap.texture = ImageTexture.create_from_image(img)
 	for y in size:
 		for x in size:
-			img.set_pixel(x, y, _cell_color(Vector2i(x, y)))
-	if size == _minimap.texture.get_size().x:
+			var cell_pos := Vector2i(x, y)
+			img.set_pixel(x, y, _cell_color(_iso_map._cell(cell_pos)))
+	if _minimap.texture.get_size() == Vector2(size, size):
 		_minimap.texture.update(img)
 	else:
 		_minimap.texture = ImageTexture.create_from_image(img)
 
 
-func _cell_color(cell_pos: Vector2i) -> Color:
-	var terrain: String = _iso_map.terrain_at(cell_pos)
-	if terrain == "liquid_MurkyWater":
+## One Cell lookup per pixel: calling the per-layer accessors here made the
+## full-map repaint hitch the frame (it used to coincide with the fast clock).
+func _cell_color(c: IsoMap.Cell) -> Color:
+	if c.terrain == "liquid_MurkyWater":
 		return Color(0.2, 0.3, 0.26)
-	if terrain == "water":
-		if _iso_map.obj_at(cell_pos) != "":
+	if c.terrain == "water":
+		if c.obj != "":
 			return Color(0.3, 0.48, 0.4)  # water plants dot the lakes
 		return Color(0.16, 0.32, 0.55)
-	if _iso_map.obj_at(cell_pos) != "":
+	if c.obj != "":
 		return Color(0.85, 0.3, 0.25)
-	if _iso_map.is_road(cell_pos):
+	if c.road != "":
 		return Color(0.42, 0.43, 0.47)
-	var zone: String = _iso_map.zone_at(cell_pos)
-	if zone.begins_with("zone_residential"):
+	if c.zone.begins_with("zone_residential"):
 		return Color(0.3, 0.75, 0.35)
-	if zone.begins_with("zone_commercial"):
+	if c.zone.begins_with("zone_commercial"):
 		return Color(0.3, 0.45, 0.85)
-	if zone.begins_with("zone_industrial"):
+	if c.zone.begins_with("zone_industrial"):
 		return Color(0.85, 0.7, 0.25)
-	if terrain == "terrain_sand_beach":
+	if c.terrain == "terrain_sand_beach":
 		return Color(0.82, 0.78, 0.6)
-	var h: int = _iso_map.height_at(cell_pos)
-	var g := 0.25 + 0.09 * h
+	var g := 0.25 + 0.09 * c.height
 	return Color(g * 0.85, g, g * 0.8)
 
 

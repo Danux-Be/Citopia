@@ -27,6 +27,10 @@ var _shot2 := false
 var _weather: Weather
 var _pedestrians: Pedestrians
 
+# storm disasters
+var _blackout_timers := {}   # plant origin -> seconds until power returns
+var _burning_timers := {}    # building origin -> seconds until it burns down
+
 
 func _ready() -> void:
 	_fail_stream = load("res://assets/audio/sound effects/game/fail_placement.ogg")
@@ -49,6 +53,7 @@ func _ready() -> void:
 	var weather := Weather.new()
 	add_child(weather)
 	_weather = weather
+	weather.lightning_struck.connect(_on_lightning_strike)
 	if "--rain" in args:
 		weather.force_rain()
 	if "--demo" in args or "--demo-elevation" in args:
@@ -78,7 +83,8 @@ func _save_shot(path: String) -> void:
 		iso_map.get_population(), iso_map.get_funds(),
 		iso_map.unserved_zone_count(), iso_map.abandoned_count(),
 		iso_map.shore_count(), iso_map.water_flora_count(), iso_map.murky_count(),
-		iso_map.ships_count(), "rain" if _weather.is_raining() else "sunny"])
+		iso_map.ships_count(),
+		"sunny" if not _weather.is_raining() else ("storm" if _weather.is_storm() else "rain")])
 
 
 ## Leaves the map editor and starts the actual game on the previewed map.
@@ -139,11 +145,42 @@ func _process(delta: float) -> void:
 	_pedestrians.process_mode = ProcessMode.PROCESS_MODE_DISABLED if paused else ProcessMode.PROCESS_MODE_INHERIT
 	if paused:
 		return
+	_tick_disasters(delta)
 	iso_map.tick_abandonment(delta)
 	_growth_timer -= delta
 	if _growth_timer <= 0.0:
 		_growth_timer = GROWTH_INTERVAL
 		iso_map.grow_zones(GROWTH_PER_TICK)
+
+
+## Storm disasters: a lightning strike blackouts a power plant or sets a
+## building on fire. Blackouts heal themselves; fires eat the building.
+func _on_lightning_strike() -> void:
+	var plants := iso_map.plant_origins()
+	plants = plants.filter(func(p: Vector2i) -> bool: return not _blackout_timers.has(p))
+	if not plants.is_empty() and randf() < 0.5:
+		var plant: Vector2i = plants[randi() % plants.size()]
+		iso_map.set_plant_disabled(plant, true)
+		_blackout_timers[plant] = randf_range(20.0, 35.0)
+		return
+	var building := iso_map.random_grown_building()
+	if building.x >= 0 and not _burning_timers.has(building):
+		iso_map.set_burning(building, true)
+		_burning_timers[building] = 6.0
+
+
+func _tick_disasters(delta: float) -> void:
+	for plant: Vector2i in _blackout_timers.keys().duplicate():
+		_blackout_timers[plant] -= delta
+		if _blackout_timers[plant] <= 0.0:
+			_blackout_timers.erase(plant)
+			iso_map.set_plant_disabled(plant, false)
+	for building: Vector2i in _burning_timers.keys().duplicate():
+		_burning_timers[building] -= delta
+		if _burning_timers[building] <= 0.0:
+			_burning_timers.erase(building)
+			iso_map.set_burning(building, false)
+			iso_map.demolish(building)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -158,6 +195,15 @@ func _unhandled_input(event: InputEvent) -> void:
 			_painting = false
 	elif event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
 		build_bar.clear_selection()
+	elif event is InputEventJoypadButton and event.pressed:
+		# Xbox pad: Start toggles pause, D-pad up/down picks the speed
+		match event.button_index:
+			JOY_BUTTON_START:
+				hud.set_speed(0 if hud.speed > 0 else 1)
+			JOY_BUTTON_DPAD_UP:
+				hud.set_speed(mini(3, maxi(1, hud.speed) + 1))
+			JOY_BUTTON_DPAD_DOWN:
+				hud.set_speed(maxi(1, hud.speed - 1))
 
 
 func _apply_tool(cell: Vector2i, play_fail: bool) -> void:
