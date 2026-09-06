@@ -80,7 +80,7 @@ func _step() -> void:
 
 
 func _update_z(cell: Vector2i) -> void:
-	z_index = (cell.x + cell.y) * 2 + 1
+	z_index = (cell.x + cell.y) * 2 + 512  # actor stream, see iso_map.gd
 
 
 func _draw() -> void:

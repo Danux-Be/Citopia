@@ -1016,10 +1016,15 @@ func _update_hover_validity() -> bool:
 # -- Rendering ------------------------------------------------------------
 
 ## One canvas item per (x + y) diagonal, z-ordered so later diagonals paint
-## over earlier ones. Vehicles slip between two diagonals with z = sum*2+1,
-## which restores correct painter's-algorithm occlusion for moving sprites
-## without redrawing the whole map every frame.
+## over earlier ones — in THREE interleaved streams, so moving sprites are
+## never buried by the ground tile ahead of them (a car is wider than the
+## interlock band between two ground diamonds):
+##   ground  z = sum*2        terrain, zones, roads, shorelines, water
+##   actors  z = sum*2 + 512  vehicles and pedestrians (set by their scripts)
+##   objects z = sum*2 + 1024 buildings, trees, ships (south-corner diagonal)
+## Godot's z cap is 4096: sum maxes at 2*192-2 = 382, objects top out at 1788.
 var _diag_nodes: Array[Node2D] = []
+var _obj_nodes: Array[Node2D] = []
 var _hover_node: Node2D
 var _pending_sums := {}   # sum -> true, flushed to diagonal redraws
 
@@ -1050,6 +1055,9 @@ func _rebuild_diagonals() -> void:
 	for node in _diag_nodes:
 		node.queue_free()
 	_diag_nodes.clear()
+	for node in _obj_nodes:
+		node.queue_free()
+	_obj_nodes.clear()
 	if _hover_node != null:
 		_hover_node.queue_free()
 	if _water_node != null:
@@ -1060,6 +1068,11 @@ func _rebuild_diagonals() -> void:
 		node.draw.connect(_draw_diagonal.bind(sum, node))
 		add_child(node)
 		_diag_nodes.append(node)
+		var obj_node := Node2D.new()
+		obj_node.z_index = sum * 2 + 1024
+		obj_node.draw.connect(_draw_objects_diagonal.bind(sum, obj_node))
+		add_child(obj_node)
+		_obj_nodes.append(obj_node)
 	_water_node = Node2D.new()
 	_water_node.z_index = -1  # below every diagonal: land overlaps the shoreline
 	_water_node.draw.connect(_draw_water.bind(_water_node))
@@ -1117,6 +1130,8 @@ func shore_count() -> int:
 func _redraw_all() -> void:
 	for node in _diag_nodes:
 		node.queue_redraw()
+	for node in _obj_nodes:
+		node.queue_redraw()
 	if _hover_node != null:
 		_hover_node.queue_redraw()
 
@@ -1131,6 +1146,7 @@ func _flush() -> void:
 	for sum: int in _pending_sums:
 		if sum >= 0 and sum < _diag_nodes.size():
 			_diag_nodes[sum].queue_redraw()
+			_obj_nodes[sum].queue_redraw()
 	_pending_sums.clear()
 
 
@@ -1149,8 +1165,16 @@ func _draw_diagonal(sum: int, canvas: CanvasItem) -> void:
 			_draw_zone(canvas, cell_pos, cell)
 		if cell.road != "":
 			_draw_road(canvas, cell_pos, cell)
-	# object pass: a multi-tile object is drawn once, at the diagonal of its
-	# SOUTH corner, so its own footprint cells never paint over its facade.
+
+
+## Object pass, in its own z stream above the actors: a multi-tile object is
+## drawn once, at the diagonal of its SOUTH corner, so its own footprint
+## cells never paint over its facade.
+func _draw_objects_diagonal(sum: int, canvas: CanvasItem) -> void:
+	if catalog == null or _cells.is_empty():
+		return
+	var x_start := maxi(0, sum - map_size + 1)
+	var x_end := mini(sum, map_size - 1)
 	for x in range(x_start, x_end + 1):
 		var y := sum - x
 		var cell_pos := Vector2i(x, y)

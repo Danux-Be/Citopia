@@ -138,7 +138,9 @@ func cell_now() -> Vector2i:
 
 
 func _update_z(cell: Vector2i) -> void:
-	z_index = (cell.x + cell.y) * 2 + 1  # between diagonal layers
+	# actor stream: above every ground diagonal (the road ahead included —
+	# cars were half-buried by it), below the object stream (iso_map 1024)
+	z_index = (cell.x + cell.y) * 2 + 512
 
 
 func _draw() -> void:
