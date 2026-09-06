@@ -56,7 +56,7 @@ func _ready() -> void:
 	if "--demo" in args:
 		_place_demo_village()
 		var cam: Camera2D = $GameCamera
-		cam.position = Vector2(-112, 792)  # village center (46,53)
+		cam.position = _village_cam
 		cam.zoom = Vector2(2.4, 2.4)
 	if "--demo-elevation" in args:
 		# synthetic flat ground: the terraformed shapes read unambiguously
@@ -72,13 +72,13 @@ func _save_shot(path: String) -> void:
 	var img := get_viewport().get_texture().get_image()
 	img.save_png(path)
 	var traffic := $Traffic as Traffic
-	print("DEBUG roads=%d vehicles=%d target=%d stopped=%d peds=%d pop=%d funds=%d unserved=%d abandoned=%d shores=%d flora=%d murky=%d weather=%s" % [
+	print("DEBUG roads=%d vehicles=%d target=%d stopped=%d peds=%d pop=%d funds=%d unserved=%d abandoned=%d shores=%d flora=%d murky=%d ships=%d weather=%s" % [
 		traffic.road_count(), traffic.get_child_count(), traffic.target_fleet(),
 		traffic.stopped_count(), _pedestrians.ped_count(),
 		iso_map.get_population(), iso_map.get_funds(),
 		iso_map.unserved_zone_count(), iso_map.abandoned_count(),
 		iso_map.shore_count(), iso_map.water_flora_count(), iso_map.murky_count(),
-		"rain" if _weather.is_raining() else "sunny"])
+		iso_map.ships_count(), "rain" if _weather.is_raining() else "sunny"])
 
 
 ## Leaves the map editor and starts the actual game on the previewed map.
@@ -190,43 +190,55 @@ func _apply_tool(cell: Vector2i, play_fail: bool) -> void:
 				$FailSound.play()
 
 
+## The demo village sits on guaranteed dry land: the layout below is carved
+## relative to a scanned origin, so lakes and swamp pockets never split it
+## (houses between puddles read as "houses on water").
+var _village_cam := Vector2(-112, 792)
+
+
 func _place_demo_village() -> void:
+	# sit the village on the least-wet block of the map, then dry the
+	# leftover puddles so lakes and swamp never split the layout
+	var rect := iso_map.find_dry_rect(26, 19)
+	var o := rect + Vector2i(6, 0)
+	iso_map.carve_to_dry(rect, 26, 19)
 	# a small road network: main street, two side streets down to the zones
-	for x in range(38, 56):
-		iso_map.place_road("road_paved", Vector2i(x, 50))
-	for y in range(50, 58):
-		iso_map.place_road("road_paved", Vector2i(41, y))
-		iso_map.place_road("road_paved", Vector2i(47, y))
-		iso_map.place_road("road_paved", Vector2i(53, y))
+	for x in range(o.x, o.x + 18):
+		iso_map.place_road("road_paved", Vector2i(x, o.y + 4))
+	for y in range(o.y + 4, o.y + 12):
+		iso_map.place_road("road_paved", Vector2i(o.x + 3, y))
+		iso_map.place_road("road_paved", Vector2i(o.x + 9, y))
+		iso_map.place_road("road_paved", Vector2i(o.x + 15, y))
 	# coal plant west of town: its coverage powers the whole village
-	_place_near("pow_5x5_Kohlekraftwerk_Durnrohr_FN", Vector2i(33, 46))
+	_place_near("pow_5x5_Kohlekraftwerk_Durnrohr_FN", Vector2i(o.x - 5, o.y))
 	var placements: Array = [
-		["res_1x1_AnconaHome", Vector2i(41, 48)],
-		["res_2x2_AnnasHouse", Vector2i(44, 47)],
-		["com_1x1_CafeApartment_kt", Vector2i(48, 48)],
-		["ind_1x1_GarageGonneVillela", Vector2i(51, 48)],
-		["bush_green_dense", Vector2i(43, 49)],
-		["bush_green_dense", Vector2i(50, 46)],
+		["res_1x1_AnconaHome", Vector2i(o.x + 3, o.y + 2)],
+		["res_2x2_AnnasHouse", Vector2i(o.x + 6, o.y + 1)],
+		["com_1x1_CafeApartment_kt", Vector2i(o.x + 10, o.y + 2)],
+		["ind_1x1_GarageGonneVillela", Vector2i(o.x + 13, o.y + 2)],
+		["bush_green_dense", Vector2i(o.x + 5, o.y + 3)],
+		["bush_green_dense", Vector2i(o.x + 12, o.y)],
 	]
 	for placement: Array in placements:
 		_place_near(placement[0], placement[1])
 	# Zone patches: level the ground first so buildings can grow, then paint.
-	for x in range(38, 44):
-		for y in range(52, 63):
+	for x in range(o.x, o.x + 6):
+		for y in range(o.y + 6, o.y + 17):
 			iso_map.level_terrain(Vector2i(x, y))
-	for x in range(38, 44):
-		for y in range(52, 56):
+	for x in range(o.x, o.x + 6):
+		for y in range(o.y + 6, o.y + 10):
 			iso_map.paint_zone(Vector2i(x, y), "zone_residential_medium")
-	for x in range(45, 49):
-		for y in range(52, 55):
+	for x in range(o.x + 7, o.x + 11):
+		for y in range(o.y + 6, o.y + 9):
 			iso_map.paint_zone(Vector2i(x, y), "zone_commercial_medium")
-	for x in range(50, 54):
-		for y in range(52, 55):
+	for x in range(o.x + 12, o.x + 16):
+		for y in range(o.y + 6, o.y + 9):
 			iso_map.paint_zone(Vector2i(x, y), "zone_industrial_medium")
 	# a far patch, off the road grid: it stays dark and never grows
-	for x in range(38, 42):
-		for y in range(60, 63):
+	for x in range(o.x, o.x + 4):
+		for y in range(o.y + 14, o.y + 17):
 			iso_map.paint_zone(Vector2i(x, y), "zone_residential_medium")
+	_village_cam = iso_map.iso_to_screen(o.x + 8, o.y + 7)
 
 
 ## Places a tile at `center`, or on the closest valid cell nearby.

@@ -47,7 +47,9 @@ open, on a modern and moddable engine.
   travel across the body), wet depressions fill with murky swamp water,
   land hugging water draws the decoded **shoreline sprites** (corner-mask
   autotile from the 17 legacy shore sheets), and cattails, swamp rice and
-  lily pads grow in their habitats — bulldozable like any decoration
+  lily pads grow in their habitats — bulldozable like any decoration.
+  Wooden ships and the odd sunken wreck lie at anchor in open water, and
+  the demo village always sites itself on dry land
 - 🏗️ **Build & bulldoze**: hover highlighting (green/red), multi-cell
   footprints (2×2 buildings...), ground/water placement rules from the tile
   database, ghost preview, demo village (`godot scenes/main.tscn ++ --demo`)

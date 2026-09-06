@@ -165,6 +165,7 @@ func generate_map(params: Dictionary = {}) -> void:
 			_cells[x + y * map_size] = cell
 
 	_place_water_flora()
+	_place_ships()
 	_population = 0
 	_rebuild_diagonals()
 	roads_changed.emit()
@@ -231,6 +232,122 @@ func _pick_flora(ids: Array, chance: float) -> String:
 	if _rng.randf() >= chance:
 		return ""
 	return ids[_rng.randi_range(0, ids.size() - 1)]
+
+
+## Moored ships from the legacy decoration pack: wooden ships anchored in
+## open water, occasionally a sunken wreck. Each needs a calm patch of clear
+## water so hulls never touch the shore.
+func _place_ships() -> void:
+	# live count: the cached total may belong to a previous generation
+	var afloat := 0
+	for cell in _cells:
+		if cell.obj.begins_with("BD_"):
+			afloat += 1
+	afloat = int(afloat / 4.0)
+	var spots: Array[Vector2i] = []
+	for y in range(1, map_size - 5):
+		for x in range(1, map_size - 5):
+			if _is_open_water_patch(Vector2i(x, y)):
+				spots.append(Vector2i(x, y))
+	spots.shuffle()
+	var placed: Array[Vector2i] = []
+	for spot in spots:
+		if placed.size() + afloat >= 3:
+			break
+		var spread := false
+		for p in placed:
+			if absi(p.x - spot.x) + absi(p.y - spot.y) < 24:
+				spread = true
+				break
+		if spread:
+			continue
+		var ship := "BD_2x2_sunkenship_kt" if _rng.randf() < 0.3 else "BD_2x2_WoodenShip"
+		if place(ship, spot, false):
+			placed.append(spot)
+
+
+## A calm berth: the 2x2 hull sits on clear, object-free water and the
+## mooring ring is water of any kind (reeds welcome, other hulls not).
+func _is_open_water_patch(origin: Vector2i) -> bool:
+	for dy in range(-1, 5):
+		for dx in range(-1, 5):
+			var c := _cell(origin + Vector2i(dx, dy))
+			var in_hull := dx >= 0 and dx < 2 and dy >= 0 and dy < 2
+			if in_hull:
+				if c.terrain != "water" or c.obj != "":
+					return false
+			elif c.terrain not in WATER_TERRAINS or c.obj.begins_with("BD_"):
+				return false
+	return true
+
+
+## Top-left of a w x h block of dry land — the demo village layout needs one.
+## Falls back to the least-wet spot so any map still gets its village.
+func find_dry_rect(w: int, h: int) -> Vector2i:
+	# integral image over the water indicator: O(1) per candidate rect
+	var stride := map_size + 1
+	var prefix := PackedInt32Array()
+	prefix.resize(stride * (map_size + 1))
+	for y in map_size:
+		for x in map_size:
+			prefix[(y + 1) * stride + x + 1] = prefix[y * stride + x + 1] \
+					+ prefix[(y + 1) * stride + x] - prefix[y * stride + x] \
+					+ (1 if _cells[x + y * map_size].terrain in WATER_TERRAINS else 0)
+	var rect_wet := func(r: Vector2i) -> int:
+		return prefix[(r.y + h) * stride + r.x + w] - prefix[r.y * stride + r.x + w] \
+				- prefix[(r.y + h) * stride + r.x] + prefix[r.y * stride + r.x]
+	var best := Vector2i(map_size / 2 - w / 2, map_size / 2 - h / 2)
+	var best_wet := 1 << 30
+	for oy in range(2, map_size - h - 1):
+		for ox in range(2, map_size - w - 1):
+			var wet: int = rect_wet.call(Vector2i(ox, oy))
+			if wet == 0:
+				return Vector2i(ox, oy)
+			if wet < best_wet:
+				best_wet = wet
+				best = Vector2i(ox, oy)
+	return best
+
+
+## Turn the water cells of a rect into plain grass (demo siting). Ships
+## moored inside the rect are relocated to open water so the village never
+## splits around a hull pond.
+func carve_to_dry(origin: Vector2i, w: int, h: int) -> void:
+	var changed := false
+	var evicted := 0
+	for dy in h:
+		for dx in w:
+			var cell_pos := origin + Vector2i(dx, dy)
+			var cell := _cell(cell_pos)
+			if cell.terrain not in WATER_TERRAINS:
+				continue
+			if cell.obj.begins_with("BD_"):
+				evicted += 1  # counts hull cells; cleared below via its origin
+				continue
+			cell.terrain = "terrain_grass"
+			cell.terrain_variant = catalog.pick_variant(catalog.get_tile(cell.terrain))
+			cell.obj = ""  # shore flora of the dried puddle goes too
+			changed = true
+	if evicted > 0:
+		_clear_ships_in_rect(origin, w, h)
+		changed = true
+	if changed:
+		_rebuild_diagonals()
+		roads_changed.emit()
+		_place_ships()  # refill up to the fleet cap in open water
+
+
+func _clear_ships_in_rect(origin: Vector2i, w: int, h: int) -> void:
+	for dy in h:
+		for dx in w:
+			var cell_pos := origin + Vector2i(dx, dy)
+			var cell := _cell(cell_pos)
+			if not cell.obj.begins_with("BD_") or cell.obj_origin != cell_pos:
+				continue
+			var size := tile_size(catalog.get_tile(cell.obj))
+			for ddy in size.y:
+				for ddx in size.x:
+					_cell(cell_pos + Vector2i(ddx, ddy)).obj = ""
 
 
 func _has_land_edge(cell_pos: Vector2i) -> bool:
@@ -819,6 +936,7 @@ var _water_tick := -1     # last animation step displayed
 var _murky_count := 0
 var _water_flora_count := 0
 var _shore_count := 0
+var _ship_count := 0
 
 
 func _process(delta: float) -> void:
@@ -865,6 +983,7 @@ func _cache_water_cells() -> void:
 	_murky_count = 0
 	_water_flora_count = 0
 	_shore_count = 0
+	_ship_count = 0
 	for y in map_size:
 		for x in map_size:
 			var cell := _cells[x + y * map_size]
@@ -873,11 +992,17 @@ func _cache_water_cells() -> void:
 				_water_cells.append(cell_pos)
 				if cell.terrain == "liquid_MurkyWater":
 					_murky_count += 1
-				if cell.obj != "":
+				if cell.obj.begins_with("BD_"):
+					_ship_count += 1
+				elif cell.obj != "":
 					_water_flora_count += 1
 			elif _shore_mask(Vector2i(x, y)) > 0:
 				_shore_count += 1
 	_water_tick = -1  # force a redraw on the next frame tick
+
+
+func ships_count() -> int:
+	return _ship_count
 
 
 func murky_count() -> int:
@@ -905,8 +1030,10 @@ func _mark(cell: Vector2i) -> void:
 
 
 func _flush() -> void:
+	# during generation ships place tiles before the diagonals exist
 	for sum: int in _pending_sums:
-		_diag_nodes[sum].queue_redraw()
+		if sum >= 0 and sum < _diag_nodes.size():
+			_diag_nodes[sum].queue_redraw()
 	_pending_sums.clear()
 
 
