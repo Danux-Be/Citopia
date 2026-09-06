@@ -103,10 +103,60 @@ func get_texture(tile: Dictionary) -> Texture2D:
 	var file_name: String = tile.get("tiles", {}).get("fileName", "")
 	if file_name.is_empty():
 		return null
+	return _legacy_texture(file_name)
+
+
+## Returns the shoreline sheet for a terrain tile (loaded once).
+func get_shore_texture(tile: Dictionary) -> Texture2D:
+	var file_name: String = tile.get("shoreLine", {}).get("fileName", "")
+	if file_name.is_empty():
+		return null
+	return _legacy_texture(file_name)
+
+
+func _legacy_texture(file_name: String) -> Texture2D:
 	if not _textures.has(file_name):
 		var res_path := file_name.replace("resources/images/", LEGACY_IMAGE_PREFIX)
 		_textures[file_name] = load(res_path)
 	return _textures.get(file_name)
+
+
+func has_shoreline(tile: Dictionary) -> bool:
+	return not tile.get("shoreLine", {}).is_empty()
+
+
+# -- Shoreline autotile (decoded from the legacy sheets) ----------------------
+# A land tile next to water draws a shore frame: the terrain diamond with
+# pockets of water where the corners touch water. The mask holds one bit per
+# diamond corner — SE=1, NE=2, NW=4, SW=8 — set when either edge neighbor
+# adjacent to that corner, or the diagonal neighbor in that corner, is water.
+#
+# Two frame layouts exist in the pack (verified pixel-wise on the water mass
+# of every frame):
+# - the grass family sheets hold 16 frames and use the mask directly as the
+#   frame index (frame 0 is a plain spare);
+# - every other sheet holds 15 frames in a scrambled order, identical across
+#   sand/beach, snow, dirt, ... — mapped below.
+const SHORE_FRAME_BY_MASK_15 := {
+	1: 4, 2: 7, 4: 6, 8: 5,          # single corners SE / NE / NW / SW
+	3: 1, 6: 2, 9: 3, 12: 0,         # edges E / N / S / W (two corners)
+	5: 8, 10: 9,                     # opposite corner pairs
+	7: 10, 11: 13, 13: 12, 14: 11,   # three corners
+	15: 14,                          # water all around
+}
+const SHORE_CLIP_H := 15  # shore frames are full flat diamonds
+
+
+## Clip region of the shore frame for a corner mask (1..15).
+func get_shore_region(tile: Dictionary, mask: int) -> Rect2:
+	var shores: Dictionary = tile.get("shoreLine", {})
+	var clip_w: int = int(shores.get("clip_width", 32))
+	# The database claims 16 frames for every sheet, but the non-grass sheets
+	# only ship 15 (a legacy data bug) — trust the texture width instead.
+	var texture := get_shore_texture(tile)
+	var frames := int(texture.get_width() / clip_w) if texture != null else 16
+	var frame: int = mask if frames >= 16 else SHORE_FRAME_BY_MASK_15.get(mask, 0)
+	return Rect2(frame * clip_w, 0, clip_w, SHORE_CLIP_H)
 
 
 ## Picks a stable variant index for a tile (random if the tile allows it).

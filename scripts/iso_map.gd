@@ -15,6 +15,10 @@ const MAX_HEIGHT := 8
 ## calm body of water (a full wave takes 1.5 s to cross a cell).
 const WATER_FPS := 2.0
 
+## Every terrain that behaves like a body of water: clear lakes plus the
+## swampy MurkyWater pockets.
+const WATER_TERRAINS := ["water", "liquid_MurkyWater"]
+
 ## Pseudo tool ids (not tiles from the database).
 const DOZER := "&dozer"
 const RAISE := "&raise"
@@ -24,6 +28,10 @@ const DEZONE := "&dezone"
 
 ## Zones grow buildings on their own. Zone tile ids start with this prefix.
 const ZONE_PREFIX := "zone_"
+
+## Moisture above which a depression fills with swamp water instead of a
+## clear lake (calibrated on seed 7: ~6% of the water, a few pockets).
+const SWAMP_MOISTURE := 0.35
 
 @export var map_size: int = 96
 
@@ -156,6 +164,7 @@ func generate_map(params: Dictionary = {}) -> void:
 			cell.terrain_variant = catalog.pick_variant(catalog.get_tile(cell.terrain))
 			_cells[x + y * map_size] = cell
 
+	_place_water_flora()
 	_population = 0
 	_rebuild_diagonals()
 	roads_changed.emit()
@@ -193,9 +202,48 @@ func generate_flat(size: int, base_height: int) -> void:
 	roads_changed.emit()
 
 
+## Water plants from the legacy pack: swamp rice and cattails hug the shores,
+## lily pads drift on calm open water. They live as cell objects, so the
+## bulldozer can clear them like any other decoration.
+func _place_water_flora() -> void:
+	for y in map_size:
+		for x in map_size:
+			var cell_pos := Vector2i(x, y)
+			var cell := _cell(cell_pos)
+			if cell.terrain not in WATER_TERRAINS:
+				continue
+			var flora := ""
+			if _has_land_edge(cell_pos):
+				if cell.terrain == "liquid_MurkyWater":
+					flora = _pick_flora(["waterFlora_rice_light", "waterFlora_rice_medium", "waterFlora_rice_dense"], 0.30)
+				else:
+					flora = _pick_flora(["waterFlora_cattail_light", "waterFlora_cattail_medium", "waterFlora_cattail_dense"], 0.16)
+			else:
+				flora = _pick_flora(["waterFlora_lilypads_light", "waterFlora_lilypads_medium", "waterFlora_lilypads_dense"], 0.05)
+			if flora != "":
+				cell.obj = flora
+				cell.obj_origin = cell_pos
+				cell.obj_size = Vector2i.ONE
+				cell.obj_variant = catalog.pick_variant(catalog.get_tile(flora))
+
+
+func _pick_flora(ids: Array, chance: float) -> String:
+	if _rng.randf() >= chance:
+		return ""
+	return ids[_rng.randi_range(0, ids.size() - 1)]
+
+
+func _has_land_edge(cell_pos: Vector2i) -> bool:
+	for n in [Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0), Vector2i(0, -1)]:
+		if in_bounds(cell_pos + n) and _cell(cell_pos + n).terrain not in WATER_TERRAINS:
+			return true
+	return false
+
+
 func _pick_terrain(elevation: float, moisture: float, water_cut: float, tree_cut: float) -> String:
 	if elevation < water_cut:
-		return "water"
+		# swampy pockets: wet depressions fill with MurkyWater instead
+		return "liquid_MurkyWater" if moisture > SWAMP_MOISTURE else "water"
 	if elevation < water_cut + 0.035:
 		return "terrain_sand_beach"
 	if moisture > tree_cut:
@@ -227,6 +275,11 @@ func _cell(cell: Vector2i) -> Cell:
 	return _cells[cell.x + cell.y * map_size]
 
 
+## True for both clear and murky water cells (build rules, shores, animation).
+func is_water_cell(cell: Vector2i) -> bool:
+	return in_bounds(cell) and _cell(cell).terrain in WATER_TERRAINS
+
+
 func height_at(cell: Vector2i) -> int:
 	return _cell(cell).height if in_bounds(cell) else 0
 
@@ -242,7 +295,7 @@ func cell_screen_pos(cell: Vector2i) -> Vector2:
 ## Raise a cell by one level, cascading so neighbors stay within one step
 ## (growing terraced mountains, like the legacy terrain raise tool).
 func change_height(origin: Vector2i, delta: int) -> void:
-	if not in_bounds(origin) or _cell(origin).terrain == "water":
+	if not in_bounds(origin) or is_water_cell(origin):
 		return
 	_change_height_rec(origin, delta, 0)
 	_flush()
@@ -252,7 +305,7 @@ func _change_height_rec(cell_pos: Vector2i, delta: int, depth: int) -> void:
 	if depth > MAX_HEIGHT + 2 or not in_bounds(cell_pos):
 		return
 	var cell := _cell(cell_pos)
-	if cell.terrain == "water":
+	if cell.terrain in WATER_TERRAINS:
 		return
 	var target: int = clampi(cell.height + delta, 0, MAX_HEIGHT)
 	if target == cell.height:
@@ -261,7 +314,7 @@ func _change_height_rec(cell_pos: Vector2i, delta: int, depth: int) -> void:
 	_mark(cell_pos)
 	# Keep the ±1 terracing invariant: pull neighbors one step along.
 	for n in [cell_pos + Vector2i(0, -1), cell_pos + Vector2i(-1, 0), cell_pos + Vector2i(1, 0), cell_pos + Vector2i(0, 1)]:
-		if in_bounds(n) and _cell(n).terrain != "water":
+		if in_bounds(n) and _cell(n).terrain not in WATER_TERRAINS:
 			var diff: int = cell.height - _cell(n).height
 			if absi(diff) > 1:
 				_change_height_rec(n, signi(diff), depth + 1)
@@ -300,7 +353,7 @@ func _level_fill(cell_pos: Vector2i, target: int, filled: Dictionary, depth: int
 	if depth > MAX_HEIGHT * 2 or not in_bounds(cell_pos) or filled.has(cell_pos):
 		return
 	var cell := _cell(cell_pos)
-	if cell.terrain == "water" or cell.height >= target:
+	if cell.terrain in WATER_TERRAINS or cell.height >= target:
 		return
 	filled[cell_pos] = true
 	cell.height = target
@@ -318,7 +371,7 @@ static func tile_size(tile: Dictionary) -> Vector2i:
 
 
 static func _covers_terrain(tile: Dictionary, terrain_id: String) -> bool:
-	if terrain_id == "water":
+	if terrain_id in WATER_TERRAINS:
 		return bool(tile.get("placeOnWater", false))
 	return bool(tile.get("placeOnGround", true))
 
@@ -456,7 +509,7 @@ func can_place_road(road_id: String, cell: Vector2i) -> bool:
 	if not in_bounds(cell) or not is_road_tool(road_id):
 		return false
 	var c := _cell(cell)
-	if c.terrain == "water" or c.obj != "" or not _road_site_ok(cell):
+	if c.terrain in WATER_TERRAINS or c.obj != "" or not _road_site_ok(cell):
 		return false
 	if c.road == road_id:
 		return true  # repainting the same road is a no-op, not a failure
@@ -521,7 +574,7 @@ func paint_zone(cell: Vector2i, zone_id: String) -> bool:
 	if not in_bounds(cell):
 		return false
 	var c := _cell(cell)
-	if c.terrain == "water" or c.obj != "" or c.road != "":
+	if c.terrain in WATER_TERRAINS or c.obj != "" or c.road != "":
 		return false
 	if c.zone == zone_id:
 		return false
@@ -737,12 +790,12 @@ func _update_hover_validity() -> bool:
 		DEZONE:
 			return _cell(hovered).zone != ""
 		RAISE, LOWER, LEVEL:
-			return _cell(hovered).terrain != "water"
+			return _cell(hovered).terrain not in WATER_TERRAINS
 		_:
 			if is_road_tool(selected_tool):
 				return can_place_road(selected_tool, hovered)
 			if is_zone_tool(selected_tool):
-				return _cell(hovered).terrain != "water" and _cell(hovered).obj == "" and _cell(hovered).road == ""
+				return _cell(hovered).terrain not in WATER_TERRAINS and _cell(hovered).obj == "" and _cell(hovered).road == ""
 			return can_place(selected_tool, hovered)
 
 
@@ -763,6 +816,9 @@ var _water_node: Node2D
 var _water_cells: Array[Vector2i] = []
 var _water_time := 0.0
 var _water_tick := -1     # last animation step displayed
+var _murky_count := 0
+var _water_flora_count := 0
+var _shore_count := 0
 
 
 func _process(delta: float) -> void:
@@ -802,14 +858,38 @@ func _rebuild_diagonals() -> void:
 
 
 ## Snapshot of where the water is; the map is only regenerated wholesale, so
-## the cache is refreshed together with the diagonals.
+## the cache is refreshed together with the diagonals. Also tallies the
+## smoke-test telemetry (swamp cells, water plants, shoreline tiles).
 func _cache_water_cells() -> void:
 	_water_cells.clear()
+	_murky_count = 0
+	_water_flora_count = 0
+	_shore_count = 0
 	for y in map_size:
 		for x in map_size:
-			if _cells[x + y * map_size].terrain == "water":
-				_water_cells.append(Vector2i(x, y))
+			var cell := _cells[x + y * map_size]
+			if cell.terrain in WATER_TERRAINS:
+				var cell_pos := Vector2i(x, y)
+				_water_cells.append(cell_pos)
+				if cell.terrain == "liquid_MurkyWater":
+					_murky_count += 1
+				if cell.obj != "":
+					_water_flora_count += 1
+			elif _shore_mask(Vector2i(x, y)) > 0:
+				_shore_count += 1
 	_water_tick = -1  # force a redraw on the next frame tick
+
+
+func murky_count() -> int:
+	return _murky_count
+
+
+func water_flora_count() -> int:
+	return _water_flora_count
+
+
+func shore_count() -> int:
+	return _shore_count
 
 
 func _redraw_all() -> void:
@@ -902,19 +982,49 @@ func _draw_terrain(canvas: CanvasItem, cell_pos: Vector2i, cell: Cell) -> void:
 	elif height_at(cell_pos + Vector2i(1, 1)) > h: slot = 4
 
 	var region: Rect2
-	if slot >= 0 and catalog.has_slopes(tile) and cell.terrain != "water":
+	var texture_used := texture
+	if slot >= 0 and catalog.has_slopes(tile):
 		region = catalog.get_slope_region(tile, slot)
 	else:
-		region = catalog.get_region(tile, texture.get_height(), cell.terrain_variant)
+		# flat ground: land hugging water shows the shoreline sprite whose
+		# water pockets match the corners that touch it
+		var mask := _shore_mask(cell_pos)
+		if mask > 0 and catalog.has_shoreline(tile):
+			region = catalog.get_shore_region(tile, mask)
+			texture_used = catalog.get_shore_texture(tile)
+		else:
+			region = catalog.get_region(tile, texture.get_height(), cell.terrain_variant)
 
-	canvas.draw_texture_rect_region(texture, _ground_rect(region, pos), region)
+	canvas.draw_texture_rect_region(texture_used, _ground_rect(region, pos), region)
+
+
+## Corner mask for the shoreline autotile, one bit per diamond corner:
+## screen down-right corner (grid E+S) = 1, screen up-right (N+E) = 2,
+## screen up-left (W+N) = 4, screen down-left (S+W) = 8. A bit is set when
+## water touches that corner — either edge neighbor adjacent to it, or the
+## diagonal neighbor sitting in the corner itself.
+const SHORE_CORNERS := [
+	[Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1), 1],      # SE
+	[Vector2i(1, 0), Vector2i(0, -1), Vector2i(1, -1), 2],    # NE
+	[Vector2i(-1, 0), Vector2i(0, -1), Vector2i(-1, -1), 4],  # NW
+	[Vector2i(-1, 0), Vector2i(0, 1), Vector2i(-1, 1), 8],    # SW
+]
+
+
+func _shore_mask(cell_pos: Vector2i) -> int:
+	var mask := 0
+	for corner in SHORE_CORNERS:
+		if is_water_cell(cell_pos + corner[0]) or is_water_cell(cell_pos + corner[1]) \
+				or is_water_cell(cell_pos + corner[2]):
+			mask += corner[3]
+	return mask
 
 
 ## Ripple frame a water cell shows at a given animation step. Cells are
 ## staggered by a position hash so waves travel across the body instead of
 ## the whole lake flashing in lockstep.
-func water_variant_at(cell_pos: Vector2i, step: int) -> int:
-	var tile := catalog.get_tile("water")
+func water_variant_at(terrain_id: String, cell_pos: Vector2i, step: int) -> int:
+	var tile := catalog.get_tile(terrain_id)
 	var count: int = maxi(1, int(tile.get("tiles", {}).get("count", 1)))
 	return (step + (cell_pos.x * 7 + cell_pos.y * 13) % count) % count
 
@@ -922,13 +1032,20 @@ func water_variant_at(cell_pos: Vector2i, step: int) -> int:
 func _draw_water(canvas: CanvasItem) -> void:
 	if catalog == null or _water_cells.is_empty():
 		return
-	var tile := catalog.get_tile("water")
-	var texture := catalog.get_texture(tile)
-	if texture == null:
-		return
 	var step := int(_water_time * WATER_FPS)
+	# both water terrains cycle their own 3-frame sheet; prepare each once
+	var prepared := {}  # terrain id -> [tile, texture]
 	for cell_pos in _water_cells:
-		var region := catalog.get_region(tile, texture.get_height(), water_variant_at(cell_pos, step))
+		var terrain: String = _cell(cell_pos).terrain
+		if not prepared.has(terrain):
+			var tile := catalog.get_tile(terrain)
+			var texture := catalog.get_texture(tile)
+			if texture == null:
+				return
+			prepared[terrain] = [tile, texture]
+		var tile: Dictionary = prepared[terrain][0]
+		var texture: Texture2D = prepared[terrain][1]
+		var region := catalog.get_region(tile, texture.get_height(), water_variant_at(terrain, cell_pos, step))
 		canvas.draw_texture_rect_region(texture, _ground_rect(region, cell_screen_pos(cell_pos)), region)
 
 

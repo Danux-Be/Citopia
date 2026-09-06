@@ -62,10 +62,11 @@ func _save_shot(path: String) -> void:
 	var img := get_viewport().get_texture().get_image()
 	img.save_png(path)
 	var traffic := $Traffic as Traffic
-	print("DEBUG roads=%d vehicles=%d target=%d stopped=%d pop=%d funds=%d unserved=%d abandoned=%d" % [
+	print("DEBUG roads=%d vehicles=%d target=%d stopped=%d pop=%d funds=%d unserved=%d abandoned=%d shores=%d flora=%d murky=%d" % [
 		traffic.road_count(), traffic.get_child_count(), traffic.target_fleet(),
 		traffic.stopped_count(), iso_map.get_population(), iso_map.get_funds(),
-		iso_map.unserved_zone_count(), iso_map.abandoned_count()])
+		iso_map.unserved_zone_count(), iso_map.abandoned_count(),
+		iso_map.shore_count(), iso_map.water_flora_count(), iso_map.murky_count()])
 
 
 ## Leaves the map editor and starts the actual game on the previewed map.

@@ -252,7 +252,11 @@ func _redraw_minimap() -> void:
 
 func _cell_color(cell_pos: Vector2i) -> Color:
 	var terrain: String = _iso_map.terrain_at(cell_pos)
+	if terrain == "liquid_MurkyWater":
+		return Color(0.2, 0.3, 0.26)
 	if terrain == "water":
+		if _iso_map.obj_at(cell_pos) != "":
+			return Color(0.3, 0.48, 0.4)  # water plants dot the lakes
 		return Color(0.16, 0.32, 0.55)
 	if _iso_map.obj_at(cell_pos) != "":
 		return Color(0.85, 0.3, 0.25)
