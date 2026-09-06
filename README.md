@@ -76,6 +76,10 @@ open, on a modern and moddable engine.
   Every car also has its own top speed and acceleration, a body type
   (compact, sedan, van) and a subtly tinted paint job. Maps are flat
   for now (the Hills slider is disabled in the map editor)
+- 🚶 **Pedestrians**: tiny citizens (1×3 px figures sliced out of the legacy
+  crowd decoration sheets) stroll along the curb lines of the road network —
+  each with its own silhouette, a little step bounce, and the occasional
+  pause to look around. The crowd scales with population
 - 🌧️ **Weather**: every few minutes the sky turns — a rain shower falls
   over the city (procedural screen-space streaks, gloomy tint, CC0 rain
   loop) with occasional lightning flashes and thunderclaps, then it clears
@@ -103,6 +107,7 @@ open, on a modern and moddable engine.
 - [x] Zone growth requires road access + power coverage
 - [x] Living water: animated ripples, shoreline autotile, swamps, water flora
 - [x] Weather: rain showers with thunder and lightning
+- [x] Pedestrians strolling the curb lines
 - [ ] Simulation: RCI demand, taxes
 - [ ] Automatic roads
 - [ ] Mod support (the DNA of the original Cytopia project)

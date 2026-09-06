@@ -25,6 +25,7 @@ var _shot_frames := -1  # >0: save a screenshot after that many frames
 var _shot2_frames := -1 # --shot2: second capture 30 frames later (animation proof)
 var _shot2 := false
 var _weather: Weather
+var _pedestrians: Pedestrians
 
 
 func _ready() -> void:
@@ -35,6 +36,9 @@ func _ready() -> void:
 	map_editor.setup(iso_map, $GameCamera)
 	map_editor.found_city.connect(found_city)
 	$Traffic.setup(iso_map)
+	_pedestrians = Pedestrians.new()
+	add_child(_pedestrians)
+	_pedestrians.setup(iso_map)
 	build_bar.visible = false
 
 	var args := OS.get_cmdline_user_args()
@@ -68,9 +72,10 @@ func _save_shot(path: String) -> void:
 	var img := get_viewport().get_texture().get_image()
 	img.save_png(path)
 	var traffic := $Traffic as Traffic
-	print("DEBUG roads=%d vehicles=%d target=%d stopped=%d pop=%d funds=%d unserved=%d abandoned=%d shores=%d flora=%d murky=%d weather=%s" % [
+	print("DEBUG roads=%d vehicles=%d target=%d stopped=%d peds=%d pop=%d funds=%d unserved=%d abandoned=%d shores=%d flora=%d murky=%d weather=%s" % [
 		traffic.road_count(), traffic.get_child_count(), traffic.target_fleet(),
-		traffic.stopped_count(), iso_map.get_population(), iso_map.get_funds(),
+		traffic.stopped_count(), _pedestrians.ped_count(),
+		iso_map.get_population(), iso_map.get_funds(),
 		iso_map.unserved_zone_count(), iso_map.abandoned_count(),
 		iso_map.shore_count(), iso_map.water_flora_count(), iso_map.murky_count(),
 		"rain" if _weather.is_raining() else "sunny"])
@@ -131,6 +136,7 @@ func _process(delta: float) -> void:
 	# Abandoned buildings collapse on the same clock.
 	var paused: bool = menu_mode or hud.is_paused()
 	$Traffic.process_mode = ProcessMode.PROCESS_MODE_DISABLED if paused else ProcessMode.PROCESS_MODE_INHERIT
+	_pedestrians.process_mode = ProcessMode.PROCESS_MODE_DISABLED if paused else ProcessMode.PROCESS_MODE_INHERIT
 	if paused:
 		return
 	iso_map.tick_abandonment(delta)
