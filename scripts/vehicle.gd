@@ -18,14 +18,17 @@ const BRAKE := 10.0         # braking is firmer than engine response
 ## most of the 32x16 tile and reads far too big) and a subtle brightness
 ## tint layered over the 6 baked-in paint colors.
 const BODY_TYPES := [
-	{"scale": 0.50, "weight": 4, "jitter": 0.10},   # compact
-	{"scale": 0.58, "weight": 4, "jitter": 0.08},   # sedan
-	{"scale": 0.66, "weight": 2, "jitter": 0.06},   # van
+	{"scale": 0.46, "weight": 4, "jitter": 0.10},   # compact
+	{"scale": 0.53, "weight": 4, "jitter": 0.08},   # sedan
+	{"scale": 0.61, "weight": 2, "jitter": 0.06},   # van
 ]
 
-## world direction -> sheet direction index (E, S, W, N)
+## world direction -> sheet direction index. Decoded from the sprite
+## shapes: frame 0 points down-right (E), 1 down-left (S), 2 up-right (N)
+## and 3 up-left (W) — our first table had W and N swapped, so cars
+## crossed the road sideways.
 const DIR_FRAMES := {
-	Vector2i(1, 0): 0, Vector2i(0, 1): 1, Vector2i(-1, 0): 2, Vector2i(0, -1): 3,
+	Vector2i(1, 0): 0, Vector2i(0, 1): 1, Vector2i(-1, 0): 3, Vector2i(0, -1): 2,
 }
 
 var iso_map: IsoMap
