@@ -73,7 +73,8 @@ open, on a modern and moddable engine.
   priority to the right at intersections, gentle braking behind slower
   traffic (queues form naturally), slow-downs on turns and junction
   approaches, and a deadlock-breaker timeout so crossings never gridlock.
-  Every car also has its own top speed and acceleration. Maps are flat
+  Every car also has its own top speed and acceleration, a body type
+  (compact, sedan, van) and a subtly tinted paint job. Maps are flat
   for now (the Hills slider is disabled in the map editor)
 - 🌧️ **Weather**: every few minutes the sky turns — a rain shower falls
   over the city (procedural screen-space streaks, gloomy tint, CC0 rain

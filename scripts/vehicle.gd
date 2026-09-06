@@ -12,6 +12,16 @@ const BASE_SPEED := 2.2     # cells per second, before the per-vehicle cruise ro
 const ACCEL := 4.0          # cells/s^2 towards the frame's speed cap
 const BRAKE := 10.0         # braking is firmer than engine response
 
+## Body types rolled per trip. The pack ships a single vehicle sheet, so
+## variety comes from silhouette (draw scale — the raw 20x14 px car fills
+## most of the 32x16 tile and reads far too big) and a subtle brightness
+## tint layered over the 6 baked-in paint colors.
+const BODY_TYPES := [
+	{"scale": 0.62, "weight": 4, "jitter": 0.10},   # compact
+	{"scale": 0.72, "weight": 4, "jitter": 0.08},   # sedan
+	{"scale": 0.82, "weight": 2, "jitter": 0.06},   # van
+]
+
 ## world direction -> sheet direction index (E, S, W, N)
 const DIR_FRAMES := {
 	Vector2i(1, 0): 0, Vector2i(0, 1): 1, Vector2i(-1, 0): 2, Vector2i(0, -1): 3,
@@ -31,6 +41,8 @@ var t := 0.0
 signal trip_finished(vehicle: Vehicle)
 
 var _texture: Texture2D
+var _draw_scale := 0.72
+var _tint := Color.WHITE
 
 
 func setup(p_iso_map: IsoMap, p_texture: Texture2D, p_color: int, p_path: Array[Vector2i]) -> void:
@@ -45,9 +57,27 @@ func setup(p_iso_map: IsoMap, p_texture: Texture2D, p_color: int, p_path: Array[
 	speed_factor = 1.0
 	wait_time = 0.0
 	ignore_yield = false
+	var body := _roll_body()
+	_draw_scale = body.scale
+	var jitter: float = body.jitter
+	var brightness := randf_range(1.0 - jitter, 1.0 + jitter)
+	_tint = Color(brightness, brightness, brightness)
 	var start := path[0]
 	position = iso_map.iso_to_screen(start.x, start.y)
 	_update_z(start)
+
+
+## Weighted pick of a body silhouette for this trip.
+func _roll_body() -> Dictionary:
+	var total := 0
+	for body in BODY_TYPES:
+		total += int(body.weight)
+	var roll := randi() % total
+	for body in BODY_TYPES:
+		roll -= int(body.weight)
+		if roll < 0:
+			return body
+	return BODY_TYPES[0]
 
 
 func _process(delta: float) -> void:
@@ -114,4 +144,5 @@ func _draw() -> void:
 	var dir: Vector2i = path[path_i + 1] - path[path_i]
 	var frame_idx: int = color_index * 4 + int(DIR_FRAMES.get(dir, 0))
 	var region := Rect2(frame_idx * FRAME, 0, FRAME, FRAME)
-	draw_texture_rect_region(_texture, Rect2(-FRAME * 0.5, -FRAME * 0.5, FRAME, FRAME), region)
+	var half := FRAME * 0.5 * _draw_scale
+	draw_texture_rect_region(_texture, Rect2(-half, -half, FRAME * _draw_scale, FRAME * _draw_scale), region, _tint)
