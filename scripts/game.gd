@@ -22,6 +22,8 @@ var _demo_steps: Array = []
 var _demo_index := 0
 var _demo_accum := 0.0
 var _shot_frames := -1  # >0: save a screenshot after that many frames
+var _shot2_frames := -1 # --shot2: second capture 90 frames later (animation proof)
+var _shot2 := false
 
 
 func _ready() -> void:
@@ -38,6 +40,7 @@ func _ready() -> void:
 	if "--shot" in args:
 		# let the active demo finish before capturing
 		_shot_frames = 1100 if "--demo-elevation" in args else 300
+	_shot2 = "--shot2" in args
 	if "--demo" in args or "--demo-elevation" in args:
 		found_city()  # demos skip the map editor
 	if "--demo" in args:
@@ -52,6 +55,17 @@ func _ready() -> void:
 		var cam: Camera2D = $GameCamera
 		cam.position = Vector2(0, 384)
 		cam.zoom = Vector2(2.0, 2.0)
+
+
+## Captures the viewport and prints the smoke-test telemetry line.
+func _save_shot(path: String) -> void:
+	var img := get_viewport().get_texture().get_image()
+	img.save_png(path)
+	var traffic := $Traffic as Traffic
+	print("DEBUG roads=%d vehicles=%d target=%d stopped=%d pop=%d funds=%d unserved=%d abandoned=%d" % [
+		traffic.road_count(), traffic.get_child_count(), traffic.target_fleet(),
+		traffic.stopped_count(), iso_map.get_population(), iso_map.get_funds(),
+		iso_map.unserved_zone_count(), iso_map.abandoned_count()])
 
 
 ## Leaves the map editor and starts the actual game on the previewed map.
@@ -72,14 +86,20 @@ func _process(delta: float) -> void:
 	if _shot_frames > 0:
 		_shot_frames -= 1
 		if _shot_frames == 0:
-			var img := get_viewport().get_texture().get_image()
-			img.save_png("/tmp/citopia_shot.png")
-			var traffic := $Traffic as Traffic
-			print("DEBUG roads=%d vehicles=%d target=%d stopped=%d pop=%d funds=%d unserved=%d abandoned=%d" % [
-				traffic.road_count(), traffic.get_child_count(), traffic.target_fleet(),
-				traffic.stopped_count(), iso_map.get_population(), iso_map.get_funds(),
-				iso_map.unserved_zone_count(), iso_map.abandoned_count()])
+			_save_shot("/tmp/citopia_shot.png")
 			print("SHOT_SAVED")
+			if _shot2:
+				# 30 frames (0.5 s) later every water cell has advanced by
+				# exactly one ripple frame: diffing the two shots proves the
+				# animation runs (a full 3-frame cycle would look identical)
+				_shot2_frames = 30
+			else:
+				get_tree().quit()
+	if _shot2_frames > 0:
+		_shot2_frames -= 1
+		if _shot2_frames == 0:
+			_save_shot("/tmp/citopia_shot2.png")
+			print("SHOT2_SAVED")
 			get_tree().quit()
 	var over_ui := get_viewport().gui_get_hovered_control() != null
 	if over_ui:

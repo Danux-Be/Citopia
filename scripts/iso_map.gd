@@ -11,6 +11,10 @@ const TILE_H := 16
 const HEIGHT_STEP := 8  # pixels per elevation level (legacy: (tileSize.x - 24))
 const MAX_HEIGHT := 8
 
+## The water sheet ships 3 ripple frames; cycling them at this rate gives a
+## calm body of water (a full wave takes 1.5 s to cross a cell).
+const WATER_FPS := 2.0
+
 ## Pseudo tool ids (not tiles from the database).
 const DOZER := "&dozer"
 const RAISE := "&raise"
@@ -752,6 +756,24 @@ var _diag_nodes: Array[Node2D] = []
 var _hover_node: Node2D
 var _pending_sums := {}   # sum -> true, flushed to diagonal redraws
 
+# Animated water: one canvas item for the whole body, redrawn only when the
+# ripple frame advances (nothing buildable overlaps water, so it never needs
+# to interleave with the per-diagonal painter's order).
+var _water_node: Node2D
+var _water_cells: Array[Vector2i] = []
+var _water_time := 0.0
+var _water_tick := -1     # last animation step displayed
+
+
+func _process(delta: float) -> void:
+	if _water_node == null or _water_cells.is_empty():
+		return
+	_water_time += delta
+	var tick := int(_water_time * WATER_FPS)
+	if tick != _water_tick:
+		_water_tick = tick
+		_water_node.queue_redraw()
+
 
 func _rebuild_diagonals() -> void:
 	for node in _diag_nodes:
@@ -759,17 +781,35 @@ func _rebuild_diagonals() -> void:
 	_diag_nodes.clear()
 	if _hover_node != null:
 		_hover_node.queue_free()
+	if _water_node != null:
+		_water_node.queue_free()
 	for sum in range(0, 2 * map_size - 1):
 		var node := Node2D.new()
 		node.z_index = sum * 2
 		node.draw.connect(_draw_diagonal.bind(sum, node))
 		add_child(node)
 		_diag_nodes.append(node)
+	_water_node = Node2D.new()
+	_water_node.z_index = -1  # below every diagonal: land overlaps the shoreline
+	_water_node.draw.connect(_draw_water.bind(_water_node))
+	add_child(_water_node)
 	_hover_node = Node2D.new()
 	_hover_node.z_index = 4095  # Godot caps z_index at 4096
 	_hover_node.draw.connect(_draw_hover)
 	add_child(_hover_node)
+	_cache_water_cells()
 	_redraw_all()
+
+
+## Snapshot of where the water is; the map is only regenerated wholesale, so
+## the cache is refreshed together with the diagonals.
+func _cache_water_cells() -> void:
+	_water_cells.clear()
+	for y in map_size:
+		for x in map_size:
+			if _cells[x + y * map_size].terrain == "water":
+				_water_cells.append(Vector2i(x, y))
+	_water_tick = -1  # force a redraw on the next frame tick
 
 
 func _redraw_all() -> void:
@@ -825,6 +865,8 @@ func _ground_rect(region: Rect2, pos: Vector2) -> Rect2:
 
 
 func _draw_terrain(canvas: CanvasItem, cell_pos: Vector2i, cell: Cell) -> void:
+	if cell.terrain == "water":
+		return  # drawn by the animated water layer below the diagonals
 	var tile := catalog.get_tile(cell.terrain)
 	var texture := catalog.get_texture(tile)
 	if texture == null:
@@ -866,6 +908,28 @@ func _draw_terrain(canvas: CanvasItem, cell_pos: Vector2i, cell: Cell) -> void:
 		region = catalog.get_region(tile, texture.get_height(), cell.terrain_variant)
 
 	canvas.draw_texture_rect_region(texture, _ground_rect(region, pos), region)
+
+
+## Ripple frame a water cell shows at a given animation step. Cells are
+## staggered by a position hash so waves travel across the body instead of
+## the whole lake flashing in lockstep.
+func water_variant_at(cell_pos: Vector2i, step: int) -> int:
+	var tile := catalog.get_tile("water")
+	var count: int = maxi(1, int(tile.get("tiles", {}).get("count", 1)))
+	return (step + (cell_pos.x * 7 + cell_pos.y * 13) % count) % count
+
+
+func _draw_water(canvas: CanvasItem) -> void:
+	if catalog == null or _water_cells.is_empty():
+		return
+	var tile := catalog.get_tile("water")
+	var texture := catalog.get_texture(tile)
+	if texture == null:
+		return
+	var step := int(_water_time * WATER_FPS)
+	for cell_pos in _water_cells:
+		var region := catalog.get_region(tile, texture.get_height(), water_variant_at(cell_pos, step))
+		canvas.draw_texture_rect_region(texture, _ground_rect(region, cell_screen_pos(cell_pos)), region)
 
 
 func _draw_road(canvas: CanvasItem, cell_pos: Vector2i, cell: Cell) -> void:

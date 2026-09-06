@@ -42,7 +42,9 @@ open, on a modern and moddable engine.
   (`TileData.json` used as-is: 827 tiles, sprite sheets, random per-tile
   variants)
 - 🌱 **Procedural biome generation** (noise-based: lakes, beaches, grass,
-  forests) — 96×96 map, easily extensible
+  forests) — 96×96 map, easily extensible — with **animated water**: the
+  lakes ripple using the three legacy Cytopia frames, staggered per cell so
+  waves travel across the body of water
 - 🏗️ **Build & bulldoze**: hover highlighting (green/red), multi-cell
   footprints (2×2 buildings...), ground/water placement rules from the tile
   database, ghost preview, demo village (`godot scenes/main.tscn ++ --demo`)
