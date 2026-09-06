@@ -59,11 +59,13 @@ open, on a modern and moddable engine.
   grown buildings that lose their service are abandoned: inhabitants move
   out immediately, the darkened ruin collapses after a grace period, and
   the zone regrows once the service is restored
-- 🛣️ **Roads & traffic**: paint roads by dragging (they auto-connect with
-  the right sprite: intersections, corners, dead-ends) and watch cars drive
-  the network — BFS pathfinding, right-hand lanes, fleet scaling with
-  population. Maps are flat for now while traffic gets polished (the Hills
-  slider is disabled in the map editor)
+- 🛣️ **Roads & traffic**: paint roads by dragging and they auto-connect with
+  the exact legacy sprite for their connection mask — curb gaps, dashed
+  centre lines on straights and truncated side-arm lines at junctions all
+  line up (the 24-frame road sheets were decoded frame by frame). Cars
+  drive the network with BFS pathfinding, right-hand lanes and a fleet
+  that scales with population. Maps are flat for now while traffic gets
+  polished (the Hills slider is disabled in the map editor)
 - 🖥️ **Game UI**: top bar with in-game date and pause/speed controls,
   live population and funds, mini RCI indicator, minimap with camera
   viewport (click to jump), build bar with category tabs browsing the

@@ -37,14 +37,25 @@ signal roads_changed
 var _population := 0
 var _funds := 20000
 
-# -- Road autotile frames (measured on the 24-frame legacy road strips) -----
-# 16 full-diamond variants (plain + marked), 4 half tiles for dead ends
-# (pointing at the single connection), 2 sloped frames (unused on flat maps).
-const ROAD_FULL_PLAIN: Array[int] = [0, 1, 2, 4, 8, 16, 17, 18, 19]
-const ROAD_FULL_MARKED: Array[int] = [5, 7, 10, 11, 13, 14, 15]
-const ROAD_HALF := {           # connection direction -> sheet frame
-	Vector2i(0, -1): 6, Vector2i(1, 0): 3,
-	Vector2i(0, 1): 9, Vector2i(-1, 0): 12,
+# -- Road autotile (decoded from the 24-frame legacy road strips) -------------
+# The curb border on each diamond edge is broken exactly where the road
+# connects, and the white markings belong to their mask: dashed centre line
+# on straight runs, side arms' lines truncated at T/cross junctions.
+# Connection bit per grid direction: E=1, N=2, W=4, S=8.
+const ROAD_DIR_BIT := {
+	Vector2i(0, -1): 2, Vector2i(1, 0): 1,
+	Vector2i(0, 1): 8, Vector2i(-1, 0): 4,
+}
+## Connection mask -> sheet frame. Singles use the native half tiles (the
+## legacy dead-end art); corner masks 3/6/9/12 have no bit-identity frame of
+## their own and live at 16-19; every other mask is its own frame index.
+const ROAD_FRAME_BY_MASK := {
+	0: 0,
+	1: 3, 2: 6, 4: 12, 8: 9,           # dead ends
+	5: 5, 10: 10,                      # straights (dashed centre line)
+	3: 16, 12: 17, 9: 18, 6: 19,       # corners
+	7: 7, 11: 11, 13: 13, 14: 14,      # T junctions
+	15: 15,                            # full cross
 }
 
 # -- Zone growth requirements -------------------------------------------------
@@ -422,6 +433,11 @@ func is_road(cell: Vector2i) -> bool:
 	return in_bounds(cell) and _cell(cell).road != ""
 
 
+## Sheet frame used at this cell (debug/minimap/tests).
+func road_variant_at(cell: Vector2i) -> int:
+	return _cell(cell).road_variant if in_bounds(cell) else -1
+
+
 ## Roads need the cell and its 4 neighbors at one height (no slope art for
 ## connections); always true on flat maps.
 func _road_site_ok(cell: Vector2i) -> bool:
@@ -478,24 +494,15 @@ func remove_road(cell: Vector2i) -> bool:
 	return true
 
 
-## Autotile: the frame depends on how many road neighbors the cell has.
-## 0 -> plain diamond, 1 -> native half tile toward the connection,
-## 2+ -> full diamond (mostly plain, occasional marked variant).
+## Autotile: the frame is looked up from the exact connection mask, so curb
+## gaps, centre-line dashes and junction markings always line up with the
+## neighbouring road cells.
 func _refresh_road_frame(cell: Vector2i) -> void:
-	var c := _cell(cell)
-	var connections: Array[Vector2i] = []
-	for n: Vector2i in ROAD_HALF:
+	var mask := 0
+	for n: Vector2i in ROAD_DIR_BIT:
 		if is_road(cell + n):
-			connections.append(n)
-	var h := hash(Vector2i(cell.x, cell.y))
-	if connections.size() == 1:
-		c.road_variant = ROAD_HALF[connections[0]]
-	elif connections.size() == 0:
-		c.road_variant = ROAD_FULL_PLAIN[h % ROAD_FULL_PLAIN.size()]
-	elif h % 4 == 0:
-		c.road_variant = ROAD_FULL_MARKED[h % ROAD_FULL_MARKED.size()]
-	else:
-		c.road_variant = ROAD_FULL_PLAIN[h % ROAD_FULL_PLAIN.size()]
+			mask |= ROAD_DIR_BIT[n]
+	_cell(cell).road_variant = ROAD_FRAME_BY_MASK[mask]
 	_mark(cell)
 
 
