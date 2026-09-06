@@ -53,11 +53,14 @@ func _process(delta: float) -> void:
 		_bob = not _bob  # the step: 1 px bounce while on the move
 	var dir := cur_cell - prev_cell
 	# curb offset in SCREEN space (see vehicle.gd: world perpendiculars
-	# skew under the isometric projection)
+	# skew under the isometric projection). The +8 px ground anchor plants
+	# the feet on the diamond's centre line instead of its top corner,
+	# which made walkers float above the road.
 	var heading := (iso_map.iso_to_screen(cur_cell.x, cur_cell.y)
 			- iso_map.iso_to_screen(prev_cell.x, prev_cell.y)).normalized()
 	var p := Vector2(prev_cell).lerp(Vector2(cur_cell), t)
-	position = iso_map.iso_to_screen(p.x, p.y) + Vector2(-heading.y, heading.x) * CURB_PX
+	position = iso_map.iso_to_screen(p.x, p.y) + Vector2(0, IsoMap.TILE_H * 0.5) \
+			+ Vector2(-heading.y, heading.x) * CURB_PX
 	_update_z(prev_cell if t < 0.5 else cur_cell)
 	queue_redraw()
 

@@ -113,12 +113,17 @@ func _process(delta: float) -> void:
 		trip_finished.emit(self)
 		return
 
+	var dir := b - a
 	# lane offset in SCREEN space: the isometric projection does not keep
 	# world perpendiculars perpendicular, and a world-space offset made cars
-	# drift off the lane line depending on their heading
+	# drift off the lane line depending on their heading. The +8 px ground
+	# anchor moves the contact point from the cell's top corner (where
+	# iso_to_screen of integer cells lands) to the diamond's centre, so both
+	# lanes sit inside the road instead of riding its top edge.
 	var heading := (iso_map.iso_to_screen(b.x, b.y) - iso_map.iso_to_screen(a.x, a.y)).normalized()
 	var p := Vector2(a).lerp(Vector2(b), t)
-	position = iso_map.iso_to_screen(p.x, p.y) + Vector2(-heading.y, heading.x) * LANE_PX
+	position = iso_map.iso_to_screen(p.x, p.y) + Vector2(0, IsoMap.TILE_H * 0.5) \
+			+ Vector2(-heading.y, heading.x) * LANE_PX
 	_update_z(a if t < 0.5 else b)
 	queue_redraw()
 
@@ -153,6 +158,7 @@ func _draw() -> void:
 	var frame_idx: int = color_index * 4 + int(DIR_FRAMES.get(dir, 0))
 	var region := Rect2(frame_idx * FRAME, 0, FRAME, FRAME)
 	var half := FRAME * 0.5 * _draw_scale
-	# pivot on the car's pixel centre so wheels sit on the lane line
-	var off := Vector2(0.0, (CAR_PIVOT_Y - FRAME * 0.5) * _draw_scale)
-	draw_texture_rect_region(_texture, Rect2(-half, -half + off.y, FRAME * _draw_scale, FRAME * _draw_scale), region, _tint)
+	# pivot on the car's pixel centre (the art sits low in its 28 px frame)
+	# so the car body straddles the anchor instead of sinking below it
+	var off := (FRAME * 0.5 - CAR_PIVOT_Y) * _draw_scale
+	draw_texture_rect_region(_texture, Rect2(-half, -half + off, FRAME * _draw_scale, FRAME * _draw_scale), region, _tint)
