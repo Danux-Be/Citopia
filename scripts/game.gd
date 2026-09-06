@@ -22,8 +22,9 @@ var _demo_steps: Array = []
 var _demo_index := 0
 var _demo_accum := 0.0
 var _shot_frames := -1  # >0: save a screenshot after that many frames
-var _shot2_frames := -1 # --shot2: second capture 90 frames later (animation proof)
+var _shot2_frames := -1 # --shot2: second capture 30 frames later (animation proof)
 var _shot2 := false
+var _weather: Weather
 
 
 func _ready() -> void:
@@ -40,7 +41,12 @@ func _ready() -> void:
 	if "--shot" in args:
 		# let the active demo finish before capturing
 		_shot_frames = 1100 if "--demo-elevation" in args else 300
-	_shot2 = "--shot2" in args
+		_shot2 = "--shot2" in args
+	var weather := Weather.new()
+	add_child(weather)
+	_weather = weather
+	if "--rain" in args:
+		weather.force_rain()
 	if "--demo" in args or "--demo-elevation" in args:
 		found_city()  # demos skip the map editor
 	if "--demo" in args:
@@ -62,11 +68,12 @@ func _save_shot(path: String) -> void:
 	var img := get_viewport().get_texture().get_image()
 	img.save_png(path)
 	var traffic := $Traffic as Traffic
-	print("DEBUG roads=%d vehicles=%d target=%d stopped=%d pop=%d funds=%d unserved=%d abandoned=%d shores=%d flora=%d murky=%d" % [
+	print("DEBUG roads=%d vehicles=%d target=%d stopped=%d pop=%d funds=%d unserved=%d abandoned=%d shores=%d flora=%d murky=%d weather=%s" % [
 		traffic.road_count(), traffic.get_child_count(), traffic.target_fleet(),
 		traffic.stopped_count(), iso_map.get_population(), iso_map.get_funds(),
 		iso_map.unserved_zone_count(), iso_map.abandoned_count(),
-		iso_map.shore_count(), iso_map.water_flora_count(), iso_map.murky_count()])
+		iso_map.shore_count(), iso_map.water_flora_count(), iso_map.murky_count(),
+		"rain" if _weather.is_raining() else "sunny"])
 
 
 ## Leaves the map editor and starts the actual game on the previewed map.

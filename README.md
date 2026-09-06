@@ -75,6 +75,10 @@ open, on a modern and moddable engine.
   approaches, and a deadlock-breaker timeout so crossings never gridlock.
   Every car also has its own top speed and acceleration. Maps are flat
   for now (the Hills slider is disabled in the map editor)
+- 🌧️ **Weather**: every few minutes the sky turns — a rain shower falls
+  over the city (procedural screen-space streaks, gloomy tint, CC0 rain
+  loop) with occasional lightning flashes and thunderclaps, then it clears
+  up again. Force a shower for screenshots with `++ --demo --rain`
 - 🖥️ **Game UI**: top bar with in-game date and pause/speed controls,
   live population and funds, mini RCI indicator, minimap with camera
   viewport (click to jump), build bar with category tabs browsing the
@@ -96,6 +100,8 @@ open, on a modern and moddable engine.
 - [x] Game HUD: date, speed, population, funds, minimap
 - [x] Roads with auto-connecting sprites + vehicle AI (BFS routing)
 - [x] Zone growth requires road access + power coverage
+- [x] Living water: animated ripples, shoreline autotile, swamps, water flora
+- [x] Weather: rain showers with thunder and lightning
 - [ ] Simulation: RCI demand, taxes
 - [ ] Automatic roads
 - [ ] Mod support (the DNA of the original Cytopia project)
@@ -161,6 +167,9 @@ License is **GPL-3**: any redistribution must remain free software.
 - 💙 The [Cytopia](https://github.com/CytopiaTeam/Cytopia) team and
   contributors for the assets, the tile database and years of work
 - 🎮 [Godot Engine](https://godotengine.org) (MIT) for the engine
+- 🌧️ Rain loop by [Ylmir](https://opengameart.org/content/rain-loopable) and
+  thunderclap by [WuxiaScrub](https://opengameart.org/content/rain-long-thunder)
+  — both **CC0**, from OpenGameArt
 
 <div align="center">
 <sub>Citopia — "the city we build together, in freedom"</sub>
