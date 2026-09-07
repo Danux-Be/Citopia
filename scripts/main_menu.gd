@@ -36,9 +36,13 @@ func _ready() -> void:
 	_root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(_root)
 
+	# blurred view of the city behind the menu (the map itself keeps running)
 	var dim := ColorRect.new()
-	dim.color = Color(0.02, 0.03, 0.05, 0.6)
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://shaders/menu_blur.gdshader")
+	dim.material = mat
+	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.add_child(dim)
 
 	var panel := PanelContainer.new()

@@ -33,6 +33,7 @@ var _burning_timers := {}    # building origin -> seconds until it burns down
 var _weather_state := Weather.State.SUNNY
 var _main_menu: MainMenu
 var _autosave := 0.0
+var _backdrop_live := false   # decorative city running behind the main menu
 
 
 func _ready() -> void:
@@ -70,6 +71,7 @@ func _ready() -> void:
 	_main_menu.quit_requested.connect(_quit_game)
 	_main_menu.resumed.connect(func() -> void: pass)
 	_main_menu.settings_applied.connect(Settings.apply)
+	_build_backdrop()
 	if "--rain" in args:
 		weather.force_rain()
 	if "--demo" in args or "--demo-elevation" in args:
@@ -128,11 +130,6 @@ func _load_and_start(slot: String) -> bool:
 	build_bar.visible = true
 	_autosave = 0.0
 	return true
-
-
-func _on_menu_new_game() -> void:
-	menu_mode = true
-	map_editor.visible = true
 
 
 func _quit_game() -> void:
@@ -212,7 +209,8 @@ func _process(delta: float) -> void:
 		if _autosave >= 45.0:
 			_autosave = 0.0
 			save_to("autosave")
-	var paused: bool = menu_mode or hud.is_paused()
+	# the decorative city behind the main menu stays alive (traffic, peds)
+	var paused: bool = hud.is_paused() or (menu_mode and not _backdrop_live)
 	$Traffic.process_mode = ProcessMode.PROCESS_MODE_DISABLED if paused else ProcessMode.PROCESS_MODE_INHERIT
 	_pedestrians.process_mode = ProcessMode.PROCESS_MODE_DISABLED if paused else ProcessMode.PROCESS_MODE_INHERIT
 	if paused:
@@ -227,6 +225,29 @@ func _process(delta: float) -> void:
 
 ## Storm disasters: a lightning strike blackouts a power plant or sets a
 ## building on fire. Blackouts heal themselves; fires eat the building.
+## Decorative city behind the main menu: a demo village with grown
+## buildings and live traffic, blurred by the menu's shader. Regenerated
+## away when the player starts a new game.
+func _build_backdrop() -> void:
+	_place_demo_village()
+	for i in 40:
+		iso_map.grow_zones(3)
+	_backdrop_live = true
+	var cam: Camera2D = $GameCamera
+	cam.position = _village_cam
+	cam.zoom = Vector2(1.5, 1.5)
+
+
+func _on_menu_new_game() -> void:
+	iso_map.generate_map()
+	var cam: Camera2D = $GameCamera
+	cam.position = Vector2(0, iso_map.map_size * IsoMap.TILE_H * 0.5)
+	cam.zoom = Vector2(0.5, 0.5)
+	menu_mode = true
+	map_editor.visible = true
+	_backdrop_live = false
+
+
 ## Headlines for weather and disaster events.
 func _tick_weather_news() -> void:
 	if _weather.state == _weather_state:
