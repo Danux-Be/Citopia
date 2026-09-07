@@ -30,6 +30,7 @@ var _pedestrians: Pedestrians
 # storm disasters
 var _blackout_timers := {}   # plant origin -> seconds until power returns
 var _burning_timers := {}    # building origin -> seconds until it burns down
+var _weather_state := Weather.State.SUNNY
 
 
 func _ready() -> void:
@@ -147,6 +148,7 @@ func _process(delta: float) -> void:
 	# Zone growth and traffic: buildings appear on zoned cells by themselves
 	# and vehicles drive around — both stop while paused or in the editor.
 	# Abandoned buildings collapse on the same clock.
+	_tick_weather_news()
 	var paused: bool = menu_mode or hud.is_paused()
 	$Traffic.process_mode = ProcessMode.PROCESS_MODE_DISABLED if paused else ProcessMode.PROCESS_MODE_INHERIT
 	_pedestrians.process_mode = ProcessMode.PROCESS_MODE_DISABLED if paused else ProcessMode.PROCESS_MODE_INHERIT
@@ -162,6 +164,20 @@ func _process(delta: float) -> void:
 
 ## Storm disasters: a lightning strike blackouts a power plant or sets a
 ## building on fire. Blackouts heal themselves; fires eat the building.
+## Headlines for weather and disaster events.
+func _tick_weather_news() -> void:
+	if _weather.state == _weather_state:
+		return
+	_weather_state = _weather.state
+	match _weather.state:
+		Weather.State.RAIN:
+			hud.news("Rain showers moving in.")
+		Weather.State.STORM:
+			hud.news("THUNDERSTORM WARNING — secure the power grid!")
+		Weather.State.SUNNY:
+			hud.news("The skies are clearing up.")
+
+
 func _on_lightning_strike() -> void:
 	var plants := iso_map.plant_origins()
 	plants = plants.filter(func(p: Vector2i) -> bool: return not _blackout_timers.has(p))
@@ -169,11 +185,13 @@ func _on_lightning_strike() -> void:
 		var plant: Vector2i = plants[randi() % plants.size()]
 		iso_map.set_plant_disabled(plant, true)
 		_blackout_timers[plant] = randf_range(20.0, 35.0)
+		hud.news("POWER FAILURE — a plant went offline!")
 		return
 	var building := iso_map.random_grown_building()
 	if building.x >= 0 and not _burning_timers.has(building):
 		iso_map.set_burning(building, true)
 		_burning_timers[building] = 6.0
+		hud.news("FIRE! A building is burning!")
 
 
 func _tick_disasters(delta: float) -> void:
@@ -182,12 +200,14 @@ func _tick_disasters(delta: float) -> void:
 		if _blackout_timers[plant] <= 0.0:
 			_blackout_timers.erase(plant)
 			iso_map.set_plant_disabled(plant, false)
+			hud.news("Power restored to the grid.")
 	for building: Vector2i in _burning_timers.keys().duplicate():
 		_burning_timers[building] -= delta
 		if _burning_timers[building] <= 0.0:
 			_burning_timers.erase(building)
 			iso_map.set_burning(building, false)
 			iso_map.demolish(building)
+			hud.news("The fire is out — the building was lost.")
 
 
 func _unhandled_input(event: InputEvent) -> void:

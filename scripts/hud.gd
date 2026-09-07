@@ -12,6 +12,18 @@ const TEXT_DIM := Color(0.62, 0.68, 0.74)
 const START_DATE := "01/01/2002"
 const DAY_SECONDS := 2.0        # real seconds per in-game day at speed 1
 const MINIMAP_REFRESH := 1.0    # seconds between minimap repaints
+const TICKER_SPEED := 70.0      # news ticker, px per second
+
+## Shown in the ticker when there is no fresh news.
+const IDLE_NEWS := [
+	"Tip: zones grow only with road access AND power coverage.",
+	"Tip: water pipes run under roads — pick the pipes tool to see them.",
+	"Tip: storms can knock out a power plant. Keep a spare.",
+	"Tip: trees are bulldozable — clear the land before zoning.",
+	"Tip: abandoned ruins collapse on their own, or bulldoze them away.",
+	"Tip: scroll to zoom, right-drag to pan, WASD works too.",
+	"Citopia — the city we build together, in freedom.",
+]
 
 var speed := 1  # 0 = paused, 1..3
 var day_count := 0.0
@@ -27,12 +39,21 @@ var _minimap_timer := 0.0
 var _iso_map: IsoMap
 var _camera: Camera2D
 
+# news ticker
+var _ticker_label: Label
+var _ticker_x := 0.0
+var _feed: Array[String] = []
+var _last_milestone := 0
+var _last_abandoned := 0
+var _low_funds_warned := false
+
 
 func _ready() -> void:
 	layer = 10
 	_iso_map = null  # wired by game.gd via setup()
 	_build_top_bar()
 	_build_left_dock()
+	news("Welcome to Citopia! Draw roads, paint zones, keep them powered.")
 	set_speed(1)
 
 
@@ -46,12 +67,42 @@ func setup(iso_map: IsoMap, camera: Camera2D) -> void:
 func _process(delta: float) -> void:
 	if speed > 0:
 		day_count += delta * speed / DAY_SECONDS
-		_date_label.text = _date_string(day_count)
+		_date_label.text = "%s   %s" % [_date_string(day_count), _clock_string(day_count)]
+	_tick_ticker(delta)
 	_minimap_timer -= delta
 	if _minimap_timer <= 0.0:
 		_minimap_timer = MINIMAP_REFRESH
 		_redraw_minimap()
 		_minimap_frame.queue_redraw()
+
+
+## SimCity-style clock: the day fraction drives the time of day.
+func _clock_string(days: float) -> String:
+	var minutes := int(fmod(days, 1.0) * 24.0 * 60.0)
+	return "%02d:%02d" % [minutes / 60, minutes % 60]
+
+
+# -- News ticker ------------------------------------------------------------
+
+## Push a fresh headline into the ticker (events call this).
+func news(msg: String) -> void:
+	_feed.append("%s — %s" % [_clock_string(day_count), msg])
+
+
+func _tick_ticker(delta: float) -> void:
+	# no current message (empty label): pull the next one from the queue
+	if _ticker_label.text.is_empty():
+		if not _feed.is_empty():
+			_ticker_label.text = _feed.pop_front()
+			_ticker_x = 0.0
+		else:
+			_ticker_label.text = IDLE_NEWS[randi() % IDLE_NEWS.size()]
+			_ticker_x = 0.0
+		return
+	_ticker_x += TICKER_SPEED * delta
+	if _ticker_x > _ticker_label.size.x + 8.0:
+		_ticker_label.text = ""  # scrolled out; the next tick picks the next item
+	_ticker_label.position.x = -_ticker_x
 
 
 func set_speed(s: int) -> void:
@@ -102,36 +153,54 @@ func _build_top_bar() -> void:
 	var bar_panel := PanelContainer.new()
 	bar_panel.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	bar_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	bar_panel.add_theme_stylebox_override("panel", _panel_style())
+	var style := _panel_style()
+	style.content_margin_left = 10
+	style.content_margin_right = 10
+	style.content_margin_top = 3
+	style.content_margin_bottom = 3
+	bar_panel.add_theme_stylebox_override("panel", style)
 
 	_top_bar = HBoxContainer.new()
-	_top_bar.add_theme_constant_override("separation", 14)
+	_top_bar.add_theme_constant_override("separation", 10)
 	bar_panel.add_child(_top_bar)
 
 	# city name
 	var city := Label.new()
 	city.text = "Citopia"
+	city.add_theme_font_size_override("font_size", 13)
 	city.add_theme_color_override("font_color", ACCENT_GREEN)
+	city.tooltip_text = "Citopia — the city we build together, in freedom"
 	_top_bar.add_child(city)
-
-	_top_bar.add_child(_vsep())
 
 	# population
 	_pop_label = Label.new()
 	_pop_label.text = "Pop 0"
+	_pop_label.add_theme_font_size_override("font_size", 12)
 	_pop_label.add_theme_color_override("font_color", TEXT_MAIN)
+	_pop_label.tooltip_text = "Population"
 	_top_bar.add_child(_pop_label)
 
 	# funds
 	_funds_label = Label.new()
 	_funds_label.text = "C$20,000"
+	_funds_label.add_theme_font_size_override("font_size", 12)
 	_funds_label.add_theme_color_override("font_color", ACCENT_GREEN)
+	_funds_label.tooltip_text = "City funds"
 	_top_bar.add_child(_funds_label)
-
-	_top_bar.add_child(_vsep())
 
 	# mini RCI indicator: three tiny vertical bars
 	_top_bar.add_child(_make_rci_bars())
+
+	# help: the old screen-filling label moved into a tooltip
+	var help := Button.new()
+	help.text = "?"
+	help.focus_mode = Control.FOCUS_NONE
+	help.custom_minimum_size = Vector2(22, 22)
+	help.add_theme_font_size_override("font_size", 12)
+	help.tooltip_text = "WASD/arrows or left stick: camera · wheel or triggers: zoom · right-drag: pan\n" + \
+		"Pick a tool below (roads and pipes paint by dragging), left-click to build, ESC to clear\n" + \
+		"Zones grow only when served: road within 2 tiles + power plant coverage"
+	_top_bar.add_child(help)
 
 	add_child(bar_panel)
 
@@ -182,6 +251,10 @@ func _make_speed_icon_button(s: int) -> Button:
 	b.icon = _speed_icon(s)
 	b.custom_minimum_size = Vector2(46.0, 30.0)  # one size for every button
 	b.focus_mode = Control.FOCUS_NONE
+	b.tooltip_text = ["Pause the simulation (gamepad: Start)",
+		"Normal speed (gamepad: D-pad up)",
+		"Fast speed (gamepad: D-pad up x2)",
+		"Fastest speed"][s]
 	b.pressed.connect(func() -> void: set_speed(s))
 	return b
 
@@ -206,6 +279,7 @@ func _build_left_dock() -> void:
 
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", _panel_style())
+	panel.tooltip_text = "City map — left-click to jump there"
 
 	_minimap = TextureRect.new()
 	_minimap.custom_minimum_size = Vector2(MINIMAP_SIZE, MINIMAP_SIZE)
@@ -233,6 +307,41 @@ func _build_left_dock() -> void:
 	dock.add_child(date_panel)
 
 	add_child(dock)
+	_build_ticker()
+
+
+## SimCity-style news strip pinned to the very bottom edge.
+func _build_ticker() -> void:
+	var panel := PanelContainer.new()
+	panel.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	var style := _panel_style()
+	style.content_margin_left = 8
+	style.content_margin_right = 8
+	style.content_margin_top = 2
+	style.content_margin_bottom = 2
+	style.set_corner_radius_all(0)
+	panel.add_theme_stylebox_override("panel", style)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	var tag := Label.new()
+	tag.text = "NEWS"
+	tag.add_theme_font_size_override("font_size", 11)
+	tag.add_theme_color_override("font_color", ACCENT_GREEN)
+	row.add_child(tag)
+	var clip := Control.new()
+	clip.clip_contents = true
+	clip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	clip.custom_minimum_size = Vector2(0, 16)
+	_ticker_label = Label.new()
+	_ticker_label.add_theme_font_size_override("font_size", 12)
+	_ticker_label.add_theme_color_override("font_color", TEXT_MAIN)
+	clip.add_child(_ticker_label)
+	row.add_child(clip)
+	panel.add_child(row)
+	add_child(panel)
 
 
 func _vsep() -> VSeparator:
@@ -257,6 +366,7 @@ func _make_rci_bars() -> HBoxContainer:
 		lbl.add_theme_color_override("font_color", TEXT_DIM)
 		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		slot.add_child(lbl)
+		slot.tooltip_text = {"R": "Residential zones", "C": "Commercial zones", "I": "Industrial zones"}[key]
 		_rci_bars[key] = bar
 		box.add_child(slot)
 	return box
@@ -279,6 +389,21 @@ func _refresh_stats() -> void:
 	for key: String in _rci_bars:
 		var bar: ColorRect = _rci_bars[key]
 		bar.custom_minimum_size.y = 4.0 + minf(28.0, counts[key] * 0.4)
+	# headlines: population milestones and abandonment waves
+	var pop := _iso_map.get_population()
+	for milestone in [100, 250, 500, 1000, 2000, 5000]:
+		if _last_milestone < milestone and pop >= milestone:
+			_last_milestone = milestone
+			news("Population reaches %d citizens!" % milestone)
+	var abandoned := _iso_map.abandoned_count()
+	if abandoned > _last_abandoned:
+		news("Citizens are moving out — %d abandoned building%s." % [abandoned, "" if abandoned == 1 else "s"])
+	_last_abandoned = abandoned
+	if _iso_map.get_funds() < 500 and not _low_funds_warned:
+		_low_funds_warned = true
+		news("City funds running low!")
+	elif _iso_map.get_funds() > 1000:
+		_low_funds_warned = false
 
 
 # -- Minimap ---------------------------------------------------------------

@@ -4,6 +4,7 @@ extends SceneTree
 ## tint bounds, z streams and frame direction mapping.
 
 var failures := 0
+const DT := 1.0 / 60.0
 
 
 func check(cond: bool, msg: String) -> void:
@@ -87,6 +88,17 @@ func _initialize() -> void:
 	check(map._diag_nodes[s + 1].z_index < vz, "ground ahead is below the vehicle")
 	check(vz < map._obj_nodes[s + 1].z_index, "objects ahead stay above the vehicle")
 	check(map._obj_nodes[s].z_index > vz, "a building on the car's cell covers it")
+
+	# 7. brake lights: lit while decelerating or held at a stop, off cruising
+	v0.speed_factor = 0.0
+	v0.speed = 1.5
+	v0._process(DT)
+	check(v0._braking, "brake lights on while decelerating")
+	check(v0._heading.length() > 0.9, "heading stored for light placement")
+	v0.speed_factor = 1.0
+	v0.cruise = 2.0
+	v0._process(DT)
+	check(not v0._braking, "lights off while cruising")
 
 	print("TEST_RESULT failures=%d" % failures)
 	quit(1 if failures > 0 else 0)
