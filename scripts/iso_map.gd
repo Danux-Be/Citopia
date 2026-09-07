@@ -37,6 +37,57 @@ const PIPE_TOOL := "underground_pipes"
 ## clear lake (calibrated on seed 7: ~6% of the water, a few pockets).
 const SWAMP_MOISTURE := 0.35
 
+
+## Rounds the water bodies: lonely water cells dry into beach sand, land
+## hemmed in by water floods, and every land tile touching water becomes a
+## sand ring — calm, uniform shores instead of jagged noise edges.
+func _smooth_shores(passes: int = 2) -> void:
+	for p in passes:
+		var flips: Array[Vector2i] = []
+		for y in map_size:
+			for x in map_size:
+				var pos := Vector2i(x, y)
+				var wet_n := 0
+				for dy in range(-1, 2):
+					for dx in range(-1, 2):
+						if dx == 0 and dy == 0:
+							continue
+						var n := pos + Vector2i(dx, dy)
+						if in_bounds(n) and is_water_cell(n):
+							wet_n += 1
+				var wet := is_water_cell(pos)
+				if wet and wet_n <= 2:
+					flips.append(pos)   # lonely puddle: dries up
+				elif not wet and wet_n >= 6:
+					flips.append(pos)   # land hemmed in by water: floods
+		for pos in flips:
+			var c := _cell(pos)
+			var to_water := is_water_cell(pos)
+			if to_water:
+				c.terrain = "water"
+			else:
+				c.terrain = "terrain_sand_beach"
+				if c.obj != "":
+					c.obj = ""
+			c.terrain_variant = catalog.pick_variant(catalog.get_tile(c.terrain))
+	# uniform sand ring on every land tile that touches water
+	for y in map_size:
+		for x in map_size:
+			var pos := Vector2i(x, y)
+			var c := _cell(pos)
+			if is_water_cell(pos) or c.terrain == "terrain_sand_beach":
+				continue
+			for dy in range(-1, 2):
+				for dx in range(-1, 2):
+					if in_bounds(pos + Vector2i(dx, dy)) \
+							and is_water_cell(pos + Vector2i(dx, dy)):
+						c.terrain = "terrain_sand_beach"
+						c.terrain_variant = catalog.pick_variant(catalog.get_tile(c.terrain))
+					if c.terrain == "terrain_sand_beach":
+						break
+				if c.terrain == "terrain_sand_beach":
+					break
+
 @export var map_size: int = 96
 
 var catalog: TileCatalog
@@ -183,6 +234,7 @@ func generate_map(params: Dictionary = {}) -> void:
 			_cells[x + y * map_size] = cell
 
 	_erosion_swamp()
+	_smooth_shores(3)
 	_place_water_flora()
 	_place_trees()
 	_place_ships()
