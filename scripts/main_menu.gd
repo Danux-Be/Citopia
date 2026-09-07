@@ -11,6 +11,8 @@ signal load_slot(slot: String)
 signal quit_requested
 signal resumed
 signal settings_applied(music: float, sfx: float, fullscreen: bool)
+signal opened
+signal closed
 
 const PANEL_BG := Color(0.05, 0.07, 0.11, 0.97)
 const PANEL_BORDER := Color(0.24, 0.30, 0.38)
@@ -212,6 +214,7 @@ func open(resume_mode: bool) -> void:
 
 func close() -> void:
 	_root.visible = false
+	closed.emit()
 
 
 func is_open() -> bool:

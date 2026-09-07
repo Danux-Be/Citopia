@@ -41,7 +41,7 @@ func _ready() -> void:
 	build_bar.setup(iso_map.catalog)
 	build_bar.tool_selected.connect(_on_tool_selected)
 	hud.setup(iso_map, $GameCamera)
-	hud.menu_requested.connect(func() -> void: _main_menu.open(true))
+	hud.menu_requested.connect(func() -> void: _show_menu(true))
 	map_editor.setup(iso_map, $GameCamera)
 	map_editor.found_city.connect(found_city)
 	$Traffic.setup(iso_map)
@@ -72,6 +72,15 @@ func _ready() -> void:
 	_main_menu.resumed.connect(func() -> void: pass)
 	_main_menu.settings_applied.connect(Settings.apply)
 	_build_backdrop()
+	_main_menu.call_deferred("open", false)
+	_main_menu.opened.connect(func() -> void:
+		hud.visible = false
+		build_bar.visible = false
+		map_editor.visible = false)
+	_main_menu.closed.connect(func() -> void:
+		hud.visible = true
+		build_bar.visible = not menu_mode
+		map_editor.visible = menu_mode)
 	if "--rain" in args:
 		weather.force_rain()
 	if "--demo" in args or "--demo-elevation" in args:
@@ -238,8 +247,17 @@ func _build_backdrop() -> void:
 	cam.zoom = Vector2(1.5, 1.5)
 
 
+## Opens the main menu with the game UI tucked away (clean backdrop).
+func _show_menu(resume: bool) -> void:
+	hud.visible = false
+	build_bar.visible = false
+	map_editor.visible = false
+	_main_menu.open(resume)
+
+
 func _on_menu_new_game() -> void:
 	iso_map.generate_map()
+	hud.visible = true
 	var cam: Camera2D = $GameCamera
 	cam.position = Vector2(0, iso_map.map_size * IsoMap.TILE_H * 0.5)
 	cam.zoom = Vector2(0.5, 0.5)
