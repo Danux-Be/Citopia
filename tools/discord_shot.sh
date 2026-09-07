@@ -16,13 +16,23 @@ if [ ! -f "$WEBHOOK_FILE" ]; then
 fi
 WEBHOOK=$(cat "$WEBHOOK_FILE")
 
-rm -f /tmp/citopia_shot.png
-DISPLAY="${DISPLAY:-:0}" timeout 150 godot --path . scenes/main.tscn \
-	++ --demo --shot > /tmp/discord_shot.log 2>&1
-if [ ! -f /tmp/citopia_shot.png ]; then
-	echo "screenshot failed, see /tmp/discord_shot.log" >&2
-	exit 1
-fi
+SHOT=/tmp/citopia_shot.png
+attempt=1
+while : ; do
+	rm -f "$SHOT"
+	DISPLAY="${DISPLAY:-:0}" timeout 150 godot --path . scenes/main.tscn \
+		++ --demo --shot > /tmp/discord_shot.log 2>&1 || true
+	# a real city capture is a rich PNG; a black/blank frame stays tiny
+	if [ -f "$SHOT" ] && [ "$(stat -c%s "$SHOT")" -gt 50000 ]; then
+		break
+	fi
+	echo "attempt $attempt produced a blank shot, retrying..." >&2
+	attempt=$((attempt + 1))
+	if [ "$attempt" -gt 3 ]; then
+		echo "three blank shots in a row, see /tmp/discord_shot.log" >&2
+		exit 1
+	fi
+done
 
 HASH=$(git rev-parse --short HEAD)
 STAMP=$(date '+%d/%m %H:%M')
@@ -30,5 +40,5 @@ CAPTION="${1:-Citopia — avancement du $STAMP (commit $HASH)}"
 
 curl -sS -X POST "$WEBHOOK" \
 	-F "payload_json={\"content\":\"$CAPTION\"}" \
-	-F "file=@/tmp/citopia_shot.png;filename=citopia.png"
+	-F "file=@$SHOT;filename=citopia.png"
 echo "posted: $CAPTION"
