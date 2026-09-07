@@ -68,6 +68,7 @@ func _build_ui() -> void:
 	panel.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	panel.offset_bottom = -30.0  # clear of the news ticker strip
 	panel.add_theme_stylebox_override("panel", _panel_style())
 
 	var vbox := VBoxContainer.new()
@@ -109,8 +110,8 @@ func _build_ui() -> void:
 	_grid_popup.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	_grid_popup.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_grid_popup.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	_grid_popup.offset_bottom = -104  # sit above the persistent bar
-	_grid_popup.offset_top = -104 - 262
+	_grid_popup.offset_bottom = -134  # sit above the persistent bar and the ticker
+	_grid_popup.offset_top = -134 - 262
 	_grid_popup.add_theme_stylebox_override("panel", _panel_style())
 	_grid_popup.visible = false
 	var scroll := ScrollContainer.new()
