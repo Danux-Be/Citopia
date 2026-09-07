@@ -61,10 +61,13 @@ func _apply() -> void:
 func _build_ui() -> void:
 	layer = 20
 
-	# left editor panel
+	# right editor panel (keeps the minimap dock clear on the left)
 	var panel := PanelContainer.new()
-	panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	panel.position = Vector2(14, 14)
+	panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	panel.offset_left = -254
+	panel.offset_right = -14
+	panel.offset_top = 14
 	panel.custom_minimum_size = Vector2(240, 0)
 	panel.add_theme_stylebox_override("panel", _panel_style())
 
