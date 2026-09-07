@@ -31,6 +31,8 @@ var _pedestrians: Pedestrians
 var _blackout_timers := {}   # plant origin -> seconds until power returns
 var _burning_timers := {}    # building origin -> seconds until it burns down
 var _weather_state := Weather.State.SUNNY
+var _main_menu: MainMenu
+var _autosave := 0.0
 
 
 func _ready() -> void:
@@ -38,6 +40,7 @@ func _ready() -> void:
 	build_bar.setup(iso_map.catalog)
 	build_bar.tool_selected.connect(_on_tool_selected)
 	hud.setup(iso_map, $GameCamera)
+	hud.menu_requested.connect(func() -> void: _main_menu.open(true))
 	map_editor.setup(iso_map, $GameCamera)
 	map_editor.found_city.connect(found_city)
 	$Traffic.setup(iso_map)
@@ -56,6 +59,17 @@ func _ready() -> void:
 	_weather = weather
 	weather.lightning_struck.connect(_on_lightning_strike)
 	weather.setup_camera($GameCamera)
+	_setup_audio_buses()
+	var saved := Settings.load_settings()
+	Settings.apply(saved.music, saved.sfx, saved.fullscreen)
+	_main_menu = MainMenu.new()
+	add_child(_main_menu)
+	_main_menu.new_game.connect(_on_menu_new_game)
+	_main_menu.continue_game.connect(func() -> void: _load_and_start("autosave"))
+	_main_menu.load_slot.connect(_load_and_start)
+	_main_menu.quit_requested.connect(_quit_game)
+	_main_menu.resumed.connect(func() -> void: pass)
+	_main_menu.settings_applied.connect(Settings.apply)
 	if "--rain" in args:
 		weather.force_rain()
 	if "--demo" in args or "--demo-elevation" in args:
@@ -96,6 +110,50 @@ func found_city() -> void:
 	build_bar.visible = true
 	if "--demo" in OS.get_cmdline_user_args():
 		build_bar._on_tab_changed(1)  # showcase the browsable tile grid
+
+## Autosave + manual save slots.
+func save_to(slot: String) -> void:
+	SaveGame.save(slot, iso_map, {"day": hud.day_count, "pop": iso_map.get_population()})
+
+
+## Loads a slot and jumps straight into the city.
+func _load_and_start(slot: String) -> bool:
+	var data := SaveGame.load_data(slot)
+	if data.is_empty():
+		return false
+	iso_map.restore_from(data["map"])
+	hud.day_count = float(data.get("day", 0.0))
+	menu_mode = false
+	map_editor.visible = false
+	build_bar.visible = true
+	_autosave = 0.0
+	return true
+
+
+func _on_menu_new_game() -> void:
+	menu_mode = true
+	map_editor.visible = true
+
+
+func _quit_game() -> void:
+	if not menu_mode:
+		save_to("autosave")
+	get_tree().quit()
+
+
+func _setup_audio_buses() -> void:
+	while AudioServer.bus_count < 3:
+		AudioServer.add_bus(AudioServer.bus_count)
+	AudioServer.set_bus_name(1, "Music")
+	AudioServer.set_bus_name(2, "SFX")
+	$MusicPlayer.set_bus("Music")
+	$FailSound.bus = "SFX"
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST and not menu_mode:
+		save_to("autosave")
+
 
 func _on_tool_selected(tool_id: String) -> void:
 	iso_map.selected_tool = tool_id
@@ -149,6 +207,11 @@ func _process(delta: float) -> void:
 	# and vehicles drive around — both stop while paused or in the editor.
 	# Abandoned buildings collapse on the same clock.
 	_tick_weather_news()
+	if not menu_mode:
+		_autosave += delta
+		if _autosave >= 45.0:
+			_autosave = 0.0
+			save_to("autosave")
 	var paused: bool = menu_mode or hud.is_paused()
 	$Traffic.process_mode = ProcessMode.PROCESS_MODE_DISABLED if paused else ProcessMode.PROCESS_MODE_INHERIT
 	_pedestrians.process_mode = ProcessMode.PROCESS_MODE_DISABLED if paused else ProcessMode.PROCESS_MODE_INHERIT

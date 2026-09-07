@@ -669,6 +669,70 @@ func is_road_tool(tool_id: String) -> bool:
 	return tool_id.begins_with("road_") and catalog.is_road_tile(tool_id)
 
 
+## Serializes the whole map state for save games.
+func to_dict() -> Dictionary:
+	var cells := []
+	for y in map_size:
+		for x in map_size:
+			var c := _cell(Vector2i(x, y))
+			cells.append([c.terrain, c.terrain_variant, c.height, c.zone, c.road, c.road_variant,
+				c.pipe, c.pipe_variant, c.obj, c.obj_variant,
+				c.obj_origin.x, c.obj_origin.y, c.obj_size.x, c.obj_size.y,
+				int(c.grown), int(c.abandoned), int(c.burning),
+				int(c.served_road), int(c.served_power)])
+	var plants := []
+	for pos: Vector2i in _plants:
+		plants.append([pos.x, pos.y, _plants[pos]])
+	var abandoning := []
+	for pos: Vector2i in _abandoning:
+		abandoning.append([pos.x, pos.y, _abandoning[pos]])
+	return {
+		"size": map_size, "funds": _funds, "population": _population,
+		"plants": plants, "disabled": _disabled_plants.keys(),
+		"abandoning": abandoning, "cells": cells,
+	}
+
+
+## Restores a state produced by to_dict (save games). Services are
+## recomputed from the restored power plants; rendering is rebuilt once.
+func restore_from(d: Dictionary) -> void:
+	map_size = int(d.size)
+	_cells.clear()
+	_cells.resize(map_size * map_size)
+	var i := 0
+	for y in map_size:
+		for x in map_size:
+			var c := Cell.new()
+			var v: Array = d.cells[i]
+			i += 1
+			c.terrain = str(v[0]); c.terrain_variant = int(v[1]); c.height = int(v[2])
+			c.zone = str(v[3]); c.road = str(v[4]); c.road_variant = int(v[5])
+			c.pipe = str(v[6]); c.pipe_variant = int(v[7])
+			c.obj = str(v[8]); c.obj_variant = int(v[9])
+			c.obj_origin = Vector2i(int(v[10]), int(v[11]))
+			c.obj_size = Vector2i(int(v[12]), int(v[13]))
+			c.grown = bool(v[14]); c.abandoned = bool(v[15]); c.burning = bool(v[16])
+			c.served_road = bool(v[17]); c.served_power = bool(v[18])
+			_cells[x + y * map_size] = c
+	_funds = int(d.funds)
+	_population = int(d.population)
+	_abandoning.clear()
+	for a in d.get("abandoning", []):
+		_abandoning[Vector2i(int(a[0]), int(a[1]))] = float(a[2])
+	_plants.clear()
+	for p in d.plants:
+		_plants[Vector2i(int(p[0]), int(p[1]))] = int(p[2])
+	_disabled_plants.clear()
+	for p in d.disabled:
+		_disabled_plants[Vector2i(int(p[0]), int(p[1]))] = true
+	for y in map_size:
+		for x in map_size:
+			if _cell(Vector2i(x, y)).zone != "":
+				_eval_cell_services(Vector2i(x, y))
+	_rebuild_diagonals()
+	roads_changed.emit()
+
+
 func is_pipe_tool(tool_id: String) -> bool:
 	return tool_id == PIPE_TOOL
 

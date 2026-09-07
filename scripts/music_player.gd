@@ -26,6 +26,11 @@ func _ready() -> void:
 	_play_next()
 
 
+## Route the underlying player to an audio bus (user settings).
+func set_bus(bus_name: String) -> void:
+	_player.bus = bus_name
+
+
 func _play_next() -> void:
 	if _playlist.is_empty():
 		return

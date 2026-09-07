@@ -1,5 +1,6 @@
 extends CanvasLayer
 
+signal menu_requested
 ## Top HUD bar in the style of the reference UI: dark navy panels, date +
 ## speed controls, city name, population, funds and a mini RCI indicator.
 ## Also owns the minimap (top-left) with the camera viewport rectangle.
@@ -201,6 +202,15 @@ func _build_top_bar() -> void:
 		"Pick a tool below (roads and pipes paint by dragging), left-click to build, ESC to clear\n" + \
 		"Zones grow only when served: road within 2 tiles + power plant coverage"
 	_top_bar.add_child(help)
+
+	# open the main menu (with a Resume entry while in-game)
+	var menu_btn := Button.new()
+	menu_btn.text = "Menu"
+	menu_btn.focus_mode = Control.FOCUS_NONE
+	menu_btn.add_theme_font_size_override("font_size", 12)
+	menu_btn.tooltip_text = "Open the main menu"
+	menu_btn.pressed.connect(func() -> void: menu_requested.emit())
+	_top_bar.add_child(menu_btn)
 
 	add_child(bar_panel)
 
