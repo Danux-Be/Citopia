@@ -388,6 +388,18 @@ func _place_demo_village() -> void:
 		iso_map.place_road("road_paved", Vector2i(o.x + 3, y))
 		iso_map.place_road("road_paved", Vector2i(o.x + 9, y))
 		iso_map.place_road("road_paved", Vector2i(o.x + 15, y))
+	# water network: a tower by the main street and pipes under every road,
+	# plus two feeder lines so all zone rows touch a fed pipe
+	_place_near("reward_1x1_OldWaterTower", Vector2i(o.x + 1, o.y + 3))
+	for x in range(o.x, o.x + 18):
+		iso_map.place_pipe(Vector2i(x, o.y + 4))
+	for y in range(o.y + 4, o.y + 12):
+		iso_map.place_pipe(Vector2i(o.x + 3, y))
+		iso_map.place_pipe(Vector2i(o.x + 9, y))
+		iso_map.place_pipe(Vector2i(o.x + 15, y))
+	for x in range(o.x, o.x + 18):
+		iso_map.place_pipe(Vector2i(x, o.y + 7))
+		iso_map.place_pipe(Vector2i(x, o.y + 10))
 	# coal plant west of town: its coverage powers the whole village
 	_place_near("pow_5x5_Kohlekraftwerk_Durnrohr_FN", Vector2i(o.x - 5, o.y))
 	var placements: Array = [

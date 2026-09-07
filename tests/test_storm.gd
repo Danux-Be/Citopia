@@ -36,6 +36,9 @@ func _initialize() -> void:
 		quit(1)
 		return
 	var plant: Vector2i = plants[0]
+	map.place("reward_1x1_OldWaterTower", Vector2i(18, 19), false)
+	for x in range(11, 21):
+		map.place_pipe(Vector2i(x, 20))
 	for tick in 200:
 		map.grow_zones(3)
 	check(map.get_population() > 0, "buildings grew (pop %d)" % map.get_population())

@@ -89,6 +89,11 @@ const ABANDON_GRACE := 20.0   # seconds unserved before a grown building collaps
 
 var _plants := {}            # plant origin -> radiation radius in tiles
 var _disabled_plants := {}   # plant origin -> true during a storm blackout
+var _wet_pipes := {}         # pipe cell -> true (connected to a water tower)
+var _water_towers := {}      # water tower origin -> true
+
+## Dynamic RCI demand, smoothed every growth tick (-1..1 per type).
+var rci_demand := {"R": 0.42, "C": 0.25, "I": 0.3}
 var _abandoning := {}        # cell pos -> seconds left before collapse
 
 
@@ -105,6 +110,7 @@ class Cell:
 	var obj_size := Vector2i.ONE # footprint of that object
 	var served_road := false     # a road lies within ROAD_ACCESS_RADIUS (zoned cells)
 	var served_power := false    # a power plant covers this cell (zoned cells)
+	var served_water := false    # a fed water pipe touches this cell (zoned cells)
 	var grown := false           # building spawned by zone growth (service required)
 	var abandoned := false       # grown building that lost road/power service
 	var burning := false         # struck by lightning: burns down shortly
@@ -602,6 +608,9 @@ func place(tile_id: String, origin: Vector2i, charge := true) -> bool:
 	if _is_power_plant(tile):
 		_plants[origin] = _plant_radius(tile)
 		_update_power_service(origin, _plants[origin], false)
+	_refresh_water_towers(origin, tile, true)
+	if _water_towers.has(origin):
+		_recompute_water()
 	stats_changed.emit()
 	_flush()
 	return true
@@ -620,6 +629,8 @@ func demolish(cell: Vector2i) -> bool:
 	var obj_origin: Vector2i = _cell(cell).obj_origin
 	var size: Vector2i = _cell(cell).obj_size
 	var demolished := catalog.get_tile(_cell(obj_origin).obj)
+	var was_tower: bool = str(demolished.get("category", "")) == "Waterworks" \
+			and str(demolished.get("id", "")) != PIPE_TOOL
 	# an abandoned building already lost its inhabitants
 	var occupied: bool = not _cell(obj_origin).abandoned
 	for dx in size.x:
@@ -638,6 +649,9 @@ func demolish(cell: Vector2i) -> bool:
 		var radius: int = _plants[obj_origin]
 		_plants.erase(obj_origin)
 		_update_power_service(obj_origin, radius, true)
+	if was_tower:
+		_water_towers.erase(obj_origin)
+		_recompute_water()
 	stats_changed.emit()
 	_flush()
 	return true
@@ -679,17 +693,20 @@ func to_dict() -> Dictionary:
 				c.pipe, c.pipe_variant, c.obj, c.obj_variant,
 				c.obj_origin.x, c.obj_origin.y, c.obj_size.x, c.obj_size.y,
 				int(c.grown), int(c.abandoned), int(c.burning),
-				int(c.served_road), int(c.served_power)])
+				int(c.served_road), int(c.served_power), int(c.served_water)])
 	var plants := []
 	for pos: Vector2i in _plants:
 		plants.append([pos.x, pos.y, _plants[pos]])
+	var towers := []
+	for pos: Vector2i in _water_towers:
+		towers.append([pos.x, pos.y])
 	var abandoning := []
 	for pos: Vector2i in _abandoning:
 		abandoning.append([pos.x, pos.y, _abandoning[pos]])
 	return {
 		"size": map_size, "funds": _funds, "population": _population,
 		"plants": plants, "disabled": _disabled_plants.keys(),
-		"abandoning": abandoning, "cells": cells,
+		"towers": towers, "abandoning": abandoning, "cells": cells,
 	}
 
 
@@ -713,6 +730,7 @@ func restore_from(d: Dictionary) -> void:
 			c.obj_size = Vector2i(int(v[12]), int(v[13]))
 			c.grown = bool(v[14]); c.abandoned = bool(v[15]); c.burning = bool(v[16])
 			c.served_road = bool(v[17]); c.served_power = bool(v[18])
+			c.served_water = bool(v[19])
 			_cells[x + y * map_size] = c
 	_funds = int(d.funds)
 	_population = int(d.population)
@@ -725,10 +743,14 @@ func restore_from(d: Dictionary) -> void:
 	_disabled_plants.clear()
 	for p in d.disabled:
 		_disabled_plants[Vector2i(int(p[0]), int(p[1]))] = true
+	_water_towers.clear()
+	for t in d.get("towers", []):
+		_water_towers[Vector2i(int(t[0]), int(t[1]))] = true
 	for y in map_size:
 		for x in map_size:
 			if _cell(Vector2i(x, y)).zone != "":
 				_eval_cell_services(Vector2i(x, y))
+	_recompute_water()
 	_rebuild_diagonals()
 	roads_changed.emit()
 
@@ -764,6 +786,7 @@ func place_pipe(cell: Vector2i) -> bool:
 		if is_pipe(cell + n):
 			_refresh_pipe_frame(cell + n)
 	_flush()
+	_recompute_water()
 	return true
 
 
@@ -776,6 +799,7 @@ func remove_pipe(cell: Vector2i) -> bool:
 		if is_pipe(cell + n):
 			_refresh_pipe_frame(cell + n)
 	_flush()
+	_recompute_water()
 	return true
 
 
@@ -883,6 +907,7 @@ func paint_zone(cell: Vector2i, zone_id: String) -> bool:
 		return false
 	c.zone = zone_id
 	_eval_cell_services(cell)
+	c.served_water = _water_adjacent(cell)
 	_mark(cell)
 	_flush()
 	return true
@@ -902,14 +927,31 @@ func clear_zone(cell: Vector2i) -> bool:
 ## Buildings only grow on flat, buildable ground without roads, served by
 ## both a nearby road and a power plant.
 func grow_zones(max_spawns: int = 3) -> void:
+	var counts := {"res": 0, "com": 0, "ind": 0}
 	var candidates: Array[Vector2i] = []
 	for y in map_size:
 		for x in map_size:
 			var cell_pos := Vector2i(x, y)
 			var c := _cell(cell_pos)
+			# dynamic RCI: each demand type gates its own growth
+			var demand_key := ""
+			if c.zone.begins_with("zone_residential"):
+				demand_key = "R"
+				if c.grown and c.obj_origin == cell_pos:
+					counts.res += 1
+			elif c.zone.begins_with("zone_commercial"):
+				demand_key = "C"
+				if c.grown and c.obj_origin == cell_pos:
+					counts.com += 1
+			elif c.zone.begins_with("zone_industrial"):
+				demand_key = "I"
+				if c.grown and c.obj_origin == cell_pos:
+					counts.ind += 1
 			if c.zone != "" and c.obj == "" and c.road == "" \
-					and c.served_road and c.served_power:
+					and c.served_road and c.served_power and c.served_water \
+					and demand_key != "" and rci_demand[demand_key] > 0.0:
 				candidates.append(cell_pos)
+	_update_rci(counts)
 	if candidates.is_empty():
 		return
 	candidates.shuffle()
@@ -923,8 +965,19 @@ func grow_zones(max_spawns: int = 3) -> void:
 			continue
 		var building: String = pool[_rng.randi_range(0, pool.size() - 1)]
 		if place(building, cell_pos, false):
-			_cell(cell_pos).grown = true  # zone-grown: needs road + power
+			_cell(cell_pos).grown = true  # zone-grown: needs road + power + water
 			spawned += 1
+
+
+## SimCity-style demand model: commerce and industry feed jobs that pull
+## residents in; residents in turn create demand for shops and factories.
+func _update_rci(counts: Dictionary) -> void:
+	var pop := float(get_population())
+	var workforce: float = pop * 0.55
+	var jobs: float = float(counts.com) * 14.0 + float(counts.ind) * 22.0
+	rci_demand.R = lerpf(rci_demand.R, clampf(0.42 + (jobs - workforce) / 140.0, -1.0, 1.0), 0.2)
+	rci_demand.C = lerpf(rci_demand.C, clampf(pop / (40.0 * maxf(counts.com, 1.0)) - 0.85, -1.0, 1.0), 0.2)
+	rci_demand.I = lerpf(rci_demand.I, clampf(pop / (55.0 * maxf(counts.ind, 1.0)) - 0.6, -1.0, 1.0), 0.2)
 
 
 # -- Services (road access + power) -------------------------------------------
@@ -1025,6 +1078,63 @@ func set_plant_disabled(origin: Vector2i, disabled: bool) -> void:
 
 func plant_origins() -> Array:
 	return _plants.keys()
+
+
+# -- Water network -----------------------------------------------------------
+# Water towers feed the pipe grid; buildings and zones are served when a fed
+# pipe touches them. Flood fill from the towers over the pipe cells.
+
+func _refresh_water_towers(origin: Vector2i, tile: Dictionary, added: bool) -> void:
+	if str(tile.get("category", "")) == "Waterworks" and tile.get("id", "") != PIPE_TOOL:
+		if added:
+			_water_towers[origin] = true
+		else:
+			_water_towers.erase(origin)
+
+
+func _water_adjacent(pos: Vector2i) -> bool:
+	for ddy in range(-1, 2):
+		for ddx in range(-1, 2):
+			if _wet_pipes.has(Vector2i(pos.x + ddx, pos.y + ddy)):
+				return true
+	return false
+
+
+## Full water pass: flood fill fed pipes from the towers, then update the
+## water flag on every cell and make grown buildings react.
+func _recompute_water() -> void:
+	_wet_pipes.clear()
+	var queue: Array[Vector2i] = []
+	for pos in _water_towers.keys():
+		for ddy in range(-1, 2):
+			for ddx in range(-1, 2):
+				var p: Vector2i = pos + Vector2i(ddx, ddy)
+				if is_pipe(p) and not _wet_pipes.has(p):
+					_wet_pipes[p] = true
+					queue.append(p)
+	while not queue.is_empty():
+		var p: Vector2i = queue.pop_back()
+		for n in [Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0), Vector2i(0, -1)]:
+			var q: Vector2i = p + n
+			if is_pipe(q) and not _wet_pipes.has(q):
+				_wet_pipes[q] = true
+				queue.append(q)
+	for y in map_size:
+		for x in map_size:
+			var pos := Vector2i(x, y)
+			var c := _cell(pos)
+			var wet := _water_adjacent(pos)
+			if wet != c.served_water:
+				c.served_water = wet
+				if c.zone != "":
+					_mark(pos)
+	for y in map_size:
+		for x in map_size:
+			var pos := Vector2i(x, y)
+			var c := _cell(pos)
+			if c.grown and c.obj != "" and c.obj_origin == pos:
+				_update_building_service(pos, c.served_road and c.served_power and c.served_water)
+	_flush()
 
 
 ## Origin of a random live zone-grown building, for lightning fires.
@@ -1331,7 +1441,8 @@ func _draw_pipe(canvas: CanvasItem, cell_pos: Vector2i, cell: Cell) -> void:
 	if texture == null:
 		return
 	var region := catalog.get_region(tile, texture.get_height(), cell.pipe_variant)
-	canvas.draw_texture_rect_region(texture, _ground_rect(region, cell_screen_pos(cell_pos)), region)
+	var tint := Color(1, 1, 1) if _wet_pipes.has(cell_pos) else Color(0.55, 0.6, 0.75)
+	canvas.draw_texture_rect_region(texture, _ground_rect(region, cell_screen_pos(cell_pos)), region, tint)
 
 
 ## Object pass, in its own z stream above the actors: a multi-tile object is
@@ -1481,7 +1592,7 @@ func _draw_zone(canvas: CanvasItem, cell_pos: Vector2i, cell: Cell) -> void:
 	if texture == null:
 		return
 	var region := catalog.get_region(tile, texture.get_height(), 0)
-	var tint := Color(1, 1, 1) if cell.served_road and cell.served_power \
+	var tint := Color(1, 1, 1) if cell.served_road and cell.served_power and cell.served_water \
 			else Color(0.45, 0.5, 0.62)
 	canvas.draw_texture_rect_region(texture, _ground_rect(region, cell_screen_pos(cell_pos)), region, tint)
 

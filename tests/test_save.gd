@@ -29,6 +29,9 @@ func _initialize() -> void:
 		plant_id = id
 		break
 	map.place(plant_id, Vector2i(16, 16), false)
+	map.place("reward_1x1_OldWaterTower", Vector2i(18, 19), false)
+	for x in range(11, 21):
+		map.place_pipe(Vector2i(x, 20))
 	for tick in 120:
 		map.grow_zones(3)
 	map.place_pipe(Vector2i(12, 20))

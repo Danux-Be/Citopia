@@ -33,6 +33,7 @@ var _date_label: Label
 var _pop_label: Label
 var _funds_label: Label
 var _rci_bars: Dictionary = {}
+var _rci_colors := {"R": Color(0.35, 0.75, 0.4), "C": Color(0.35, 0.55, 0.9), "I": Color(0.9, 0.75, 0.3)}
 var _minimap: TextureRect
 var _minimap_frame: Control
 var _minimap_image: Image
@@ -362,6 +363,7 @@ func _make_rci_bars() -> HBoxContainer:
 	var box := HBoxContainer.new()
 	box.add_theme_constant_override("separation", 3)
 	var colors := {"R": Color(0.35, 0.75, 0.4), "C": Color(0.35, 0.55, 0.9), "I": Color(0.9, 0.75, 0.3)}
+	_rci_colors = colors
 	for key: String in ["R", "C", "I"]:
 		var slot := VBoxContainer.new()
 		slot.alignment = BoxContainer.ALIGNMENT_END
@@ -387,18 +389,15 @@ func _refresh_stats() -> void:
 		return
 	_pop_label.text = "Pop %d" % _iso_map.get_population()
 	_funds_label.text = "C$%s" % _iso_map.get_funds()
-	# RCI bars: share of zoned cells per type (cap for display)
-	var counts := {"R": 0, "C": 0, "I": 0}
-	var prefixes := {"R": "zone_residential", "C": "zone_commercial", "I": "zone_industrial"}
-	for y in _iso_map.map_size:
-		for x in _iso_map.map_size:
-			var z: String = _iso_map.zone_at(Vector2i(x, y))
-			for key: String in prefixes:
-				if z.begins_with(prefixes[key]):
-					counts[key] += 1
-	for key: String in _rci_bars:
+	# RCI bars show the dynamic demand per type (growth follows demand)
+	var demand: Dictionary = _iso_map.rci_demand
+	for key: String in ["R", "C", "I"]:
+		var d: float = clampf(demand[key], 0.0, 1.0)
 		var bar: ColorRect = _rci_bars[key]
-		bar.custom_minimum_size.y = 4.0 + minf(28.0, counts[key] * 0.4)
+		bar.custom_minimum_size.y = 4.0 + d * 28.0
+		bar.color = _rci_colors[key] if demand[key] > 0.0 else Color(0.4, 0.42, 0.46)
+		var lbl: String = {"R": "Residential", "C": "Commercial", "I": "Industrial"}[key]
+		bar.get_parent().tooltip_text = "%s demand: %d%%" % [lbl, int(demand[key] * 100.0)]
 	# headlines: population milestones and abandonment waves
 	var pop := _iso_map.get_population()
 	for milestone in [100, 250, 500, 1000, 2000, 5000]:
