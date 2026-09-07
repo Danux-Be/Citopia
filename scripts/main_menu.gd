@@ -31,6 +31,11 @@ var _sfx_slider: HSlider
 var _fullscreen_check: CheckBox
 var _resume_mode := false
 var _backdrop: TextureRect
+var _music_muted: CheckBox
+var _sfx_muted: CheckBox
+var _vsync_check: CheckBox
+var _rebind_rows := {}
+var _listening := ""
 
 
 func _ready() -> void:
@@ -120,14 +125,63 @@ func _ready() -> void:
 
 	var saved := Settings.load_settings()
 	_music_slider = _slider_row("Musique", saved.music)
+	_settings_view.add_child(_music_slider)
+	_music_muted = CheckBox.new()
+	_music_muted.text = "Couper la musique"
+	_music_muted.button_pressed = bool(saved.get("music_muted", false))
+	_settings_view.add_child(_music_muted)
 	_sfx_slider = _slider_row("Effets sonores", saved.sfx)
+	_settings_view.add_child(_sfx_slider)
+	_sfx_muted = CheckBox.new()
+	_sfx_muted.text = "Couper les effets sonores"
+	_sfx_muted.button_pressed = bool(saved.get("sfx_muted", false))
+	_settings_view.add_child(_sfx_muted)
+
 	_fullscreen_check = CheckBox.new()
 	_fullscreen_check.text = "Plein écran"
-	_fullscreen_check.button_pressed = saved.fullscreen
+	_fullscreen_check.button_pressed = bool(saved.get("fullscreen", false))
 	_settings_view.add_child(_fullscreen_check)
+	_vsync_check = CheckBox.new()
+	_vsync_check.text = "Synchronisation verticale (V-sync)"
+	_vsync_check.button_pressed = bool(saved.get("vsync", true))
+	_settings_view.add_child(_vsync_check)
+
+	var binds_title := _view_title("Contrôles — cliquer puis presser une touche")
+	binds_title.add_theme_font_size_override("font_size", 12)
+	_settings_view.add_child(binds_title)
+	var bind_scroll := ScrollContainer.new()
+	bind_scroll.custom_minimum_size = Vector2(280, 132)
+	var bind_box := VBoxContainer.new()
+	bind_box.add_theme_constant_override("separation", 2)
+	bind_scroll.add_child(bind_box)
+	for action: String in Inputs.BINDABLE:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 6)
+		var lbl := Label.new()
+		lbl.text = Inputs.ACTION_LABELS[action]
+		lbl.custom_minimum_size.x = 150
+		lbl.add_theme_font_size_override("font_size", 11)
+		row.add_child(lbl)
+		var btn := Button.new()
+		btn.custom_minimum_size = Vector2(120, 22)
+		btn.add_theme_font_size_override("font_size", 11)
+		btn.focus_mode = Control.FOCUS_NONE
+		btn.pressed.connect(_start_listening.bind(action, btn))
+		bind_box.add_child(row)
+		_rebind_rows[action] = btn
+	_settings_view.add_child(bind_scroll)
+
 	_settings_view.add_child(_menu_button("Appliquer", func() -> void:
-		Settings.save_settings(_music_slider.value, _sfx_slider.value, _fullscreen_check.button_pressed)
-		settings_applied.emit(_music_slider.value, _sfx_slider.value, _fullscreen_check.button_pressed)
+		var d := Settings.load_settings()
+		d.music = _music_slider.value
+		d.music_muted = _music_muted.button_pressed
+		d.sfx = _sfx_slider.value
+		d.sfx_muted = _sfx_muted.button_pressed
+		d.fullscreen = _fullscreen_check.button_pressed
+		d.vsync = _vsync_check.button_pressed
+		Settings.save_settings(d)
+		Inputs.save_bindings()
+		settings_applied.emit(d)
 		_show_view("menu")))
 	_settings_view.add_child(_menu_button("Retour", func() -> void: _show_view("menu")))
 
@@ -177,6 +231,8 @@ func _show_view(view: String) -> void:
 	_settings_view.visible = view == "settings"
 	if view == "load":
 		_refresh_load_list()
+	if view == "settings":
+		_refresh_rebind_labels()
 
 
 func _refresh_load_list() -> void:
@@ -227,3 +283,33 @@ func _unhandled_input(event: InputEvent) -> void:
 		close()
 		resumed.emit()
 		get_viewport().set_input_as_handled()
+
+
+func _input(event: InputEvent) -> void:
+	if _listening == "":
+		return
+	if event is InputEventKey and event.pressed and not event.echo:
+		get_viewport().set_input_as_handled()
+		if event.physical_keycode != KEY_ESCAPE:
+			Inputs.rebind(_listening, event)
+			Inputs.save_bindings()
+		_listening = ""
+		_refresh_rebind_labels()
+	elif event is InputEventJoypadButton and event.pressed:
+		get_viewport().set_input_as_handled()
+		Inputs.rebind(_listening, event)
+		Inputs.save_bindings()
+		_listening = ""
+		_refresh_rebind_labels()
+
+
+func _start_listening(action: String, btn: Button) -> void:
+	_listening = action
+	for a: String in _rebind_rows:
+		_rebind_rows[a].text = Inputs.binding_label(a)
+	btn.text = "Appuyez..."
+
+
+func _refresh_rebind_labels() -> void:
+	for a: String in _rebind_rows:
+		_rebind_rows[a].text = Inputs.binding_label(a)

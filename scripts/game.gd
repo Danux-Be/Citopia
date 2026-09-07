@@ -60,9 +60,11 @@ func _ready() -> void:
 	_weather = weather
 	weather.lightning_struck.connect(_on_lightning_strike)
 	weather.setup_camera($GameCamera)
+	Inputs.ensure_actions()
+	Inputs.load_bindings()
 	_setup_audio_buses()
 	var saved := Settings.load_settings()
-	Settings.apply(saved.music, saved.sfx, saved.fullscreen)
+	Settings.apply(saved)
 	_main_menu = MainMenu.new()
 	add_child(_main_menu)
 	_main_menu.new_game.connect(_on_menu_new_game)
@@ -70,7 +72,7 @@ func _ready() -> void:
 	_main_menu.load_slot.connect(_load_and_start)
 	_main_menu.quit_requested.connect(_quit_game)
 	_main_menu.resumed.connect(func() -> void: pass)
-	_main_menu.settings_applied.connect(Settings.apply)
+	_main_menu.settings_applied.connect(func(d: Dictionary) -> void: Settings.apply(d))
 	_build_backdrop()
 	_main_menu.call_deferred("open", false)
 	_main_menu.opened.connect(func() -> void:
@@ -322,8 +324,6 @@ func _unhandled_input(event: InputEvent) -> void:
 			_apply_tool(iso_map.screen_to_iso(iso_map.get_local_mouse_position()), true)
 		else:
 			_painting = false
-	elif event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
-		build_bar.clear_selection()
 	elif event is InputEventJoypadButton and event.pressed:
 		# Xbox pad: Start toggles pause, D-pad up/down picks the speed
 		match event.button_index:

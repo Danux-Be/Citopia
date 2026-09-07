@@ -21,18 +21,15 @@ func _ready() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventMouseButton:
-		match event.button_index:
-			MOUSE_BUTTON_WHEEL_UP:
-				if event.pressed:
-					_zoom_at_cursor(ZOOM_STEP, event.position)
-			MOUSE_BUTTON_WHEEL_DOWN:
-				if event.pressed:
-					_zoom_at_cursor(1.0 / ZOOM_STEP, event.position)
-			MOUSE_BUTTON_MIDDLE, MOUSE_BUTTON_RIGHT:
-				_dragging = event.pressed
+	if event is InputEventMouseButton and (event.button_index == MOUSE_BUTTON_MIDDLE \
+			or event.button_index == MOUSE_BUTTON_RIGHT):
+		_dragging = event.pressed
 	elif event is InputEventMouseMotion and _dragging:
 		position -= event.relative / zoom
+	elif event.is_action_pressed("camera_zoom_in"):
+		_zoom_at_cursor(ZOOM_STEP, get_viewport().get_visible_rect().size * 0.5)
+	elif event.is_action_pressed("camera_zoom_out"):
+		_zoom_at_cursor(1.0 / ZOOM_STEP, get_viewport().get_visible_rect().size * 0.5)
 
 
 func _process(delta: float) -> void:
