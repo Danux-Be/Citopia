@@ -1616,20 +1616,15 @@ func _draw_terrain(canvas: CanvasItem, cell_pos: Vector2i, cell: Cell) -> void:
 	elif height_at(cell_pos + Vector2i(1, 1)) > h: slot = 4
 
 	var region: Rect2
-	var texture_used := texture
 	if slot >= 0 and catalog.has_slopes(tile):
 		region = catalog.get_slope_region(tile, slot)
 	else:
-		# flat ground: land hugging water shows the shoreline sprite whose
-		# water pockets match the corners that touch it
-		var mask := _shore_mask(cell_pos)
-		if mask > 0 and catalog.has_shoreline(tile):
-			region = catalog.get_shore_region(tile, mask)
-			texture_used = catalog.get_shore_texture(tile)
-		else:
-			region = catalog.get_region(tile, texture.get_height(), cell.terrain_variant)
+		# flat ground: plain terrain tile. The water/sand boundary stays a
+		# clean straight diamond edge — the legacy shore sprites' wavy
+		# water pockets read as jagged, abrupt shorelines.
+		region = catalog.get_region(tile, texture.get_height(), cell.terrain_variant)
 
-	canvas.draw_texture_rect_region(texture_used, _ground_rect(region, pos), region)
+	canvas.draw_texture_rect_region(texture, _ground_rect(region, pos), region)
 
 
 ## Corner mask for the shoreline autotile, one bit per diamond corner:
