@@ -65,11 +65,13 @@ func _initialize() -> void:
 	check(tint_ok, "tints are neutral gray within +-15%")
 	check(has_tinted, "some vehicles actually carry a tint")
 
-	# 4. frame mapping: sheet shapes decode as E=0 S=1 N=2 W=3
-	check(Vehicle.DIR_FRAMES[Vector2i(1, 0)] == 0, "E uses frame 0 (nose down-right)")
-	check(Vehicle.DIR_FRAMES[Vector2i(0, 1)] == 1, "S uses frame 1 (nose down-left)")
-	check(Vehicle.DIR_FRAMES[Vector2i(0, -1)] == 2, "N uses frame 2 (nose up-right)")
-	check(Vehicle.DIR_FRAMES[Vector2i(-1, 0)] == 3, "W uses frame 3 (nose up-left)")
+	# 4. frame mapping: frames 0/2 lean along the E-W diagonal (side views),
+	# frames 1/3 along the S-N diagonal (end views) — a wrong pairing shows
+	# cars sideways across the road
+	check(Vehicle.DIR_FRAMES[Vector2i(1, 0)] == 0, "E uses side frame 0 (NW-SE lean)")
+	check(Vehicle.DIR_FRAMES[Vector2i(-1, 0)] == 2, "W uses side frame 2 (NW-SE lean)")
+	check(Vehicle.DIR_FRAMES[Vector2i(0, 1)] == 1, "S uses end frame 1 (NE-SW lean)")
+	check(Vehicle.DIR_FRAMES[Vector2i(0, -1)] == 3, "N uses end frame 3 (NE-SW lean)")
 	var v0: Vehicle = traffic.spawn_on_path(path)
 	v0.path_i = 0
 

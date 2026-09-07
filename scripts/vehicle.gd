@@ -25,12 +25,12 @@ const BODY_TYPES := [
 	{"scale": 0.61, "weight": 2, "jitter": 0.06},   # van
 ]
 
-## world direction -> sheet direction index. Decoded from the sprite
-## shapes: frame 0 points down-right (E), 1 down-left (S), 2 up-right (N)
-## and 3 up-left (W) — our first table had W and N swapped, so cars
-## crossed the road sideways.
+## world direction -> sheet direction index (E, S, W, N). The sheet leans
+## frames 0/2 along the NW-SE screen diagonal (E/W roads) and frames 1/3
+## along the NE-SW diagonal (S/N roads) — swapping those pairs puts cars
+## sideways across the road.
 const DIR_FRAMES := {
-	Vector2i(1, 0): 0, Vector2i(0, 1): 1, Vector2i(-1, 0): 3, Vector2i(0, -1): 2,
+	Vector2i(1, 0): 0, Vector2i(0, 1): 1, Vector2i(-1, 0): 2, Vector2i(0, -1): 3,
 }
 
 var iso_map: IsoMap
