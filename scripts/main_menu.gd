@@ -28,22 +28,27 @@ var _music_slider: HSlider
 var _sfx_slider: HSlider
 var _fullscreen_check: CheckBox
 var _resume_mode := false
+var _backdrop: TextureRect
 
 
 func _ready() -> void:
 	layer = 20
 	_root = Control.new()
+	_root.visible = false
 	_root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(_root)
 
-	# blurred view of the city behind the menu (the map itself keeps running)
-	var dim := ColorRect.new()
+	# soft backdrop: a downscaled capture of the city (real area-average
+	# blur) shown stretched, slightly dimmed
+	var dim := TextureRect.new()
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
-	var mat := ShaderMaterial.new()
-	mat.shader = load("res://shaders/menu_blur.gdshader")
-	dim.material = mat
+	dim.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	dim.stretch_mode = TextureRect.STRETCH_SCALE
+	dim.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	dim.modulate = Color(0.72, 0.75, 0.82)
 	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.add_child(dim)
+	_backdrop = dim
 
 	var panel := PanelContainer.new()
 	panel.set_anchors_preset(Control.PRESET_CENTER)
@@ -191,11 +196,18 @@ func _refresh_load_list() -> void:
 
 
 ## Opens the menu. In resume mode (opened mid-game) a Resume button leads.
+## The backdrop is a downscaled capture of the live view: a true area blur
+## that stays silky instead of the harsh gaussian shader.
 func open(resume_mode: bool) -> void:
 	_resume_mode = resume_mode
 	_resume_btn.visible = resume_mode
 	_show_view("menu")
 	_root.visible = true
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var img := get_viewport().get_texture().get_image()
+	img.resize(maxi(1, img.get_width() / 12), maxi(1, img.get_height() / 12), Image.INTERPOLATE_BILINEAR)
+	_backdrop.texture = ImageTexture.create_from_image(img)
 
 
 func close() -> void:
