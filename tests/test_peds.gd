@@ -60,10 +60,11 @@ func _initialize() -> void:
 			break
 	check(on_road, "600 steps without leaving the roads")
 
-	# 4. the step bob toggles while walking
+	# 4. the step bob toggles while walking (pauses forced off: deterministic)
 	var p2 := peds.spawn_at(Vector2i(15, 20))
 	var seen_states := {}
 	for step in 90:
+		p2._pause_left = 0.0
 		p2._process(DT)
 		seen_states[p2._bob] = true
 	check(seen_states.size() == 2, "step bob alternates (walk animation)")

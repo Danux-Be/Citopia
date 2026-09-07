@@ -16,7 +16,7 @@ const YIELD_TIMEOUT := 3.0     # stopped this long -> ignore right-of-way (no gr
 const FOLLOW_MIN_GAP := 0.30   # full stop when a car ahead is closer than this
 const FOLLOW_FREE_GAP := 0.55  # no constraint beyond this gap
 
-const SHEET := "res://assets/images/vehicles/vehicles.png"
+const SHEET := "res://assets/images/vehicles/vehicles_pixel.png"
 const FRAME := 28
 const COLOR_COUNT := 6
 

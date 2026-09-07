@@ -6,31 +6,29 @@ extends Node2D
 ## offset, picking the sprite frame that matches its heading. Its z_index is
 ## recomputed each frame so it slots between the map's diagonal layers.
 
-const FRAME := 28
+const FRAME_W := 32
+const FRAME_H := 28
 const LANE_PX := 3.0        # lane centre, screen px right of the road centre line
                             # (the art's asphalt band is only ~6 px wide across;
                             # 6 px put the wheels on the sidewalk)
-const CAR_PIVOT_Y := 16.5   # the car's pixels sit low in its 28 px frame
 const BASE_SPEED := 2.2     # cells per second, before the per-vehicle cruise roll
 const ACCEL := 4.0          # cells/s^2 towards the frame's speed cap
 const BRAKE := 10.0         # braking is firmer than engine response
 
-## Body types rolled per trip. The pack ships a single vehicle sheet, so
-## variety comes from silhouette (draw scale — the raw 20x14 px car fills
-## most of the 32x16 tile and reads far too big) and a subtle brightness
-## tint layered over the 6 baked-in paint colors.
+## Body types rolled per trip: silhouette variety around the size the user
+## picked, plus a subtle brightness tint layered over the 6 paint colors.
 const BODY_TYPES := [
 	{"scale": 0.44, "weight": 4, "jitter": 0.10},   # compact
 	{"scale": 0.48, "weight": 4, "jitter": 0.08},   # sedan
 	{"scale": 0.53, "weight": 2, "jitter": 0.06},   # van
 ]
 
-## world direction -> sheet direction index (E, S, W, N). The sheet leans
-## frames 0/2 along the NW-SE screen diagonal (E/W roads) and frames 1/3
-## along the NE-SW diagonal (S/N roads) — swapping those pairs puts cars
-## sideways across the road.
+## world direction -> orientation index inside the color block (8 per color,
+## drawn by tools/gen_vehicles_pixel.py): 0/1 horizontal right/left, 2/3
+## vertical up/down, 4-7 the road obliques down-right (E), down-left (S),
+## up-left (W), up-right (N).
 const DIR_FRAMES := {
-	Vector2i(1, 0): 0, Vector2i(0, 1): 1, Vector2i(-1, 0): 2, Vector2i(0, -1): 3,
+	Vector2i(1, 0): 4, Vector2i(0, 1): 5, Vector2i(-1, 0): 6, Vector2i(0, -1): 7,
 }
 
 var iso_map: IsoMap
@@ -157,10 +155,9 @@ func _draw() -> void:
 	if _texture == null or path.size() < 2 or path_i >= path.size() - 1:
 		return
 	var dir: Vector2i = path[path_i + 1] - path[path_i]
-	var frame_idx: int = color_index * 4 + int(DIR_FRAMES.get(dir, 0))
-	var region := Rect2(frame_idx * FRAME, 0, FRAME, FRAME)
-	var half := FRAME * 0.5 * _draw_scale
-	# pivot on the car's pixel centre (the art sits low in its 28 px frame)
-	# so the car body straddles the anchor instead of sinking below it
-	var off := (FRAME * 0.5 - CAR_PIVOT_Y) * _draw_scale
-	draw_texture_rect_region(_texture, Rect2(-half, -half + off, FRAME * _draw_scale, FRAME * _draw_scale), region, _tint)
+	var frame_idx: int = color_index * 8 + int(DIR_FRAMES.get(dir, 4))
+	var region := Rect2(frame_idx * FRAME_W, 0, FRAME_W, FRAME_H)
+	var half_w := FRAME_W * 0.5 * _draw_scale
+	var half_h := FRAME_H * 0.5 * _draw_scale
+	# the new art is centred in its frame: the anchor is the car's ground point
+	draw_texture_rect_region(_texture, Rect2(-half_w, -half_h, FRAME_W * _draw_scale, FRAME_H * _draw_scale), region, _tint)

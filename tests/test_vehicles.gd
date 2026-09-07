@@ -48,10 +48,10 @@ func _initialize() -> void:
 	check(scales.size() >= 2, "fleet mixes body types (%d distinct)" % scales.size())
 	check(vans > 0 and vans < 30, "vans exist but stay a minority (%d/60)" % vans)
 
-	# 2. every body is strictly smaller than the legacy 28 px frame
+	# 2. every body stays well inside its 32 px frame
 	var max_rect := 0.0
 	for s in scales:
-		max_rect = maxf(max_rect, s * Vehicle.FRAME)
+		max_rect = maxf(max_rect, s * Vehicle.FRAME_W)
 	check(max_rect < 24.0, "largest drawn vehicle stays under 24 px (%.1f)" % max_rect)
 
 	# 3. tints jitter around white without going extreme
@@ -65,20 +65,19 @@ func _initialize() -> void:
 	check(tint_ok, "tints are neutral gray within +-15%")
 	check(has_tinted, "some vehicles actually carry a tint")
 
-	# 4. frame mapping: frames 0/2 lean along the E-W diagonal (side views),
-	# frames 1/3 along the S-N diagonal (end views) — a wrong pairing shows
-	# cars sideways across the road
-	check(Vehicle.DIR_FRAMES[Vector2i(1, 0)] == 0, "E uses side frame 0 (NW-SE lean)")
-	check(Vehicle.DIR_FRAMES[Vector2i(-1, 0)] == 2, "W uses side frame 2 (NW-SE lean)")
-	check(Vehicle.DIR_FRAMES[Vector2i(0, 1)] == 1, "S uses end frame 1 (NE-SW lean)")
-	check(Vehicle.DIR_FRAMES[Vector2i(0, -1)] == 3, "N uses end frame 3 (NE-SW lean)")
+	# 4. frame mapping: the generated sheet has 8 orientations per color —
+	# the road obliques are 4 (E), 5 (S), 6 (W), 7 (N)
+	check(Vehicle.DIR_FRAMES[Vector2i(1, 0)] == 4, "E uses oblique down-right")
+	check(Vehicle.DIR_FRAMES[Vector2i(0, 1)] == 5, "S uses oblique down-left")
+	check(Vehicle.DIR_FRAMES[Vector2i(-1, 0)] == 6, "W uses oblique up-left")
+	check(Vehicle.DIR_FRAMES[Vector2i(0, -1)] == 7, "N uses oblique up-right")
 	var v0: Vehicle = traffic.spawn_on_path(path)
 	v0.path_i = 0
 
 	# 5. drawn rect math matches the body scale
-	var half: float = Vehicle.FRAME * 0.5 * v0._draw_scale
-	check(is_equal_approx(half * 2.0, Vehicle.FRAME * v0._draw_scale),
-		"draw rect size = FRAME * scale")
+	var half: float = Vehicle.FRAME_W * 0.5 * v0._draw_scale
+	check(is_equal_approx(half * 2.0, Vehicle.FRAME_W * v0._draw_scale),
+		"draw rect size = FRAME_W * scale")
 
 	# 6. z streams: a vehicle sits ABOVE the ground diagonal of the cell ahead
 	# (it used to be half-buried by that road tile) and BELOW its objects
