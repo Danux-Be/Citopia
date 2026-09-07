@@ -7,7 +7,9 @@ extends Node2D
 ## recomputed each frame so it slots between the map's diagonal layers.
 
 const FRAME := 28
-const LANE_PX := 6.0        # lane centre, screen px right of the road centre line
+const LANE_PX := 3.0        # lane centre, screen px right of the road centre line
+                            # (the art's asphalt band is only ~6 px wide across;
+                            # 6 px put the wheels on the sidewalk)
 const CAR_PIVOT_Y := 16.5   # the car's pixels sit low in its 28 px frame
 const BASE_SPEED := 2.2     # cells per second, before the per-vehicle cruise roll
 const ACCEL := 4.0          # cells/s^2 towards the frame's speed cap
