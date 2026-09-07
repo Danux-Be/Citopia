@@ -1600,10 +1600,13 @@ func _shore_mask(cell_pos: Vector2i) -> int:
 
 ## Ripple frame a water cell shows at a given animation step. Cells are
 ## staggered by a position hash so waves travel across the body instead of
-## the whole lake flashing in lockstep.
+## the whole lake flashing in lockstep. The murky sheet hides a full
+## 16-frame cycle (its DB entry wrongly claims 3 near-identical frames).
+const WATER_FRAME_COUNT := {"water": 3, "liquid_MurkyWater": 16}
+
+
 func water_variant_at(terrain_id: String, cell_pos: Vector2i, step: int) -> int:
-	var tile := catalog.get_tile(terrain_id)
-	var count: int = maxi(1, int(tile.get("tiles", {}).get("count", 1)))
+	var count: int = WATER_FRAME_COUNT.get(terrain_id, 3)
 	return (step + (cell_pos.x * 7 + cell_pos.y * 13) % count) % count
 
 
@@ -1623,7 +1626,9 @@ func _draw_water(canvas: CanvasItem) -> void:
 			prepared[terrain] = [tile, texture]
 		var tile: Dictionary = prepared[terrain][0]
 		var texture: Texture2D = prepared[terrain][1]
-		var region := catalog.get_region(tile, texture.get_height(), water_variant_at(terrain, cell_pos, step))
+		var variant := water_variant_at(terrain, cell_pos, step)
+		var region := Rect2(variant * TILE_W, 8, TILE_W, 15) if terrain == "liquid_MurkyWater" \
+				else catalog.get_region(tile, texture.get_height(), variant)
 		canvas.draw_texture_rect_region(texture, _ground_rect(region, cell_screen_pos(cell_pos)), region)
 
 

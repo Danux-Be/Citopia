@@ -110,7 +110,7 @@ func _initialize() -> void:
 	map._process(0.3)
 	check(map._water_tick == 1, "tick advances at 2 fps")
 	var v: int = map.water_variant_at("liquid_MurkyWater", Vector2i(4, 4), 3)
-	check(v >= 0 and v <= 2, "murky variant in range at any step")
+	check(v >= 0 and v <= 15, "murky cycles its 16-frame animation (variant %d)" % v)
 
 	# --- 7. flat map stays dry ------------------------------------------------
 	map.generate_flat(16, 2)
