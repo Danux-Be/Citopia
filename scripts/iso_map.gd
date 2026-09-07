@@ -29,6 +29,10 @@ const DEZONE := "&dezone"
 ## Zones grow buildings on their own. Zone tile ids start with this prefix.
 const ZONE_PREFIX := "zone_"
 
+## Underground water pipes (SimCity-2000-style layer). Placed like roads,
+## they run under roads, zones and buildings.
+const PIPE_TOOL := "underground_pipes"
+
 ## Moisture above which a depression fills with swamp water instead of a
 ## clear lake (calibrated on seed 7: ~6% of the water, a few pockets).
 const SWAMP_MOISTURE := 0.35
@@ -38,6 +42,15 @@ const SWAMP_MOISTURE := 0.35
 var catalog: TileCatalog
 var hovered := Vector2i(-1, -1)
 var selected_tool := ""      # tile id, a pseudo tool, or "" (no tool)
+
+## SimCity-2000-style underground layer: darkened map with water pipes.
+## Toggled by selecting the water pipes tool; redraws the whole map once.
+var underground_view := false:
+	set(value):
+		if underground_view == value:
+			return
+		underground_view = value
+		_redraw_all()
 
 var _cells: Array[Cell] = []
 var _hover_valid := false
@@ -95,6 +108,8 @@ class Cell:
 	var grown := false           # building spawned by zone growth (service required)
 	var abandoned := false       # grown building that lost road/power service
 	var burning := false         # struck by lightning: burns down shortly
+	var pipe := ""               # underground water pipes ("underground_pipes")
+	var pipe_variant := 0        # autotile frame index in the pipes strip
 
 
 func _ready() -> void:
@@ -596,6 +611,8 @@ func place(tile_id: String, origin: Vector2i, charge := true) -> bool:
 func demolish(cell: Vector2i) -> bool:
 	if not in_bounds(cell):
 		return false
+	if _cell(cell).obj == "" and _cell(cell).pipe != "" and _cell(cell).road == "":
+		return remove_pipe(cell)
 	if _cell(cell).obj == "" and _cell(cell).road != "":
 		return remove_road(cell)
 	if _cell(cell).obj == "":
@@ -650,6 +667,62 @@ func get_funds() -> int:
 
 func is_road_tool(tool_id: String) -> bool:
 	return tool_id.begins_with("road_") and catalog.is_road_tile(tool_id)
+
+
+func is_pipe_tool(tool_id: String) -> bool:
+	return tool_id == PIPE_TOOL
+
+
+func is_pipe(cell: Vector2i) -> bool:
+	return in_bounds(cell) and _cell(cell).pipe != ""
+
+
+## Pipes run under everything on land — roads, zones, buildings.
+func can_place_pipe(cell: Vector2i) -> bool:
+	return in_bounds(cell) and not is_water_cell(cell)
+
+
+## Lays one underground pipe cell (roads-style autotile) and refreshes the
+## frames of its pipe neighbours.
+func place_pipe(cell: Vector2i) -> bool:
+	if not can_place_pipe(cell):
+		return false
+	var c := _cell(cell)
+	if c.pipe != "":
+		return true
+	if _funds < int(catalog.get_tile(PIPE_TOOL).get("price", 0)):
+		return false
+	_funds -= int(catalog.get_tile(PIPE_TOOL).get("price", 0))
+	stats_changed.emit()
+	c.pipe = PIPE_TOOL
+	_refresh_pipe_frame(cell)
+	for n: Vector2i in ROAD_DIR_BIT:
+		if is_pipe(cell + n):
+			_refresh_pipe_frame(cell + n)
+	_flush()
+	return true
+
+
+func remove_pipe(cell: Vector2i) -> bool:
+	if not is_pipe(cell):
+		return false
+	_cell(cell).pipe = ""
+	_refresh_pipe_frame(cell)
+	for n: Vector2i in ROAD_DIR_BIT:
+		if is_pipe(cell + n):
+			_refresh_pipe_frame(cell + n)
+	_flush()
+	return true
+
+
+## The pipes strip mirrors the road sheets: frame index == connection mask.
+func _refresh_pipe_frame(cell: Vector2i) -> void:
+	var mask := 0
+	for n: Vector2i in ROAD_DIR_BIT:
+		if is_pipe(cell + n):
+			mask |= ROAD_DIR_BIT[n]
+	_cell(cell).pipe_variant = mask
+	_mark(cell)
 
 
 func is_road(cell: Vector2i) -> bool:
@@ -1000,7 +1073,8 @@ func _update_hover_validity() -> bool:
 		return false
 	match selected_tool:
 		DOZER:
-			return _cell(hovered).obj != "" or _cell(hovered).zone != "" or _cell(hovered).road != ""
+			return _cell(hovered).obj != "" or _cell(hovered).zone != "" \
+					or _cell(hovered).road != "" or _cell(hovered).pipe != ""
 		DEZONE:
 			return _cell(hovered).zone != ""
 		RAISE, LOWER, LEVEL:
@@ -1008,6 +1082,8 @@ func _update_hover_validity() -> bool:
 		_:
 			if is_road_tool(selected_tool):
 				return can_place_road(selected_tool, hovered)
+			if is_pipe_tool(selected_tool):
+				return can_place_pipe(hovered)
 			if is_zone_tool(selected_tool):
 				return _cell(hovered).terrain not in WATER_TERRAINS and _cell(hovered).obj == "" and _cell(hovered).road == ""
 			return can_place(selected_tool, hovered)
@@ -1155,23 +1231,50 @@ func _draw_diagonal(sum: int, canvas: CanvasItem) -> void:
 		return
 	var x_start := maxi(0, sum - map_size + 1)
 	var x_end := mini(sum, map_size - 1)
-	# ground pass: terrain, zone overlay, road
+	# ground pass: terrain, zone overlay, road — or the underground layer
 	for x in range(x_start, x_end + 1):
 		var y := sum - x
 		var cell_pos := Vector2i(x, y)
 		var cell := _cell(cell_pos)
-		_draw_terrain(canvas, cell_pos, cell)
-		if cell.zone != "":
-			_draw_zone(canvas, cell_pos, cell)
-		if cell.road != "":
-			_draw_road(canvas, cell_pos, cell)
+		if underground_view:
+			_draw_underground_tile(canvas, cell_pos)
+			if cell.road != "":
+				_draw_road(canvas, cell_pos, cell, Color(0.55, 0.57, 0.68))
+			if cell.pipe != "":
+				_draw_pipe(canvas, cell_pos, cell)
+		else:
+			_draw_terrain(canvas, cell_pos, cell)
+			if cell.zone != "":
+				_draw_zone(canvas, cell_pos, cell)
+			if cell.road != "":
+				_draw_road(canvas, cell_pos, cell)
+
+
+## Dark diamond of the underground layer.
+func _draw_underground_tile(canvas: CanvasItem, cell_pos: Vector2i) -> void:
+	var pos := cell_screen_pos(cell_pos)
+	var dark := Color(0.07, 0.08, 0.12)
+	canvas.draw_colored_polygon(PackedVector2Array([
+		pos + Vector2(0, 1), pos + Vector2(TILE_W * 0.5, 1 + TILE_H * 0.5),
+		pos + Vector2(0, 1 + TILE_H), pos + Vector2(-TILE_W * 0.5, 1 + TILE_H * 0.5),
+	]), dark)
+
+
+## Underground water pipes: bottom-anchored strip like roads, autotiled.
+func _draw_pipe(canvas: CanvasItem, cell_pos: Vector2i, cell: Cell) -> void:
+	var tile := catalog.get_tile(cell.pipe)
+	var texture := catalog.get_texture(tile)
+	if texture == null:
+		return
+	var region := catalog.get_region(tile, texture.get_height(), cell.pipe_variant)
+	canvas.draw_texture_rect_region(texture, _ground_rect(region, cell_screen_pos(cell_pos)), region)
 
 
 ## Object pass, in its own z stream above the actors: a multi-tile object is
 ## drawn once, at the diagonal of its SOUTH corner, so its own footprint
-## cells never paint over its facade.
+## cells never paint over its facade. Hidden in the underground view.
 func _draw_objects_diagonal(sum: int, canvas: CanvasItem) -> void:
-	if catalog == null or _cells.is_empty():
+	if catalog == null or _cells.is_empty() or underground_view:
 		return
 	var x_start := maxi(0, sum - map_size + 1)
 	var x_end := mini(sum, map_size - 1)
@@ -1297,13 +1400,13 @@ func _draw_water(canvas: CanvasItem) -> void:
 		canvas.draw_texture_rect_region(texture, _ground_rect(region, cell_screen_pos(cell_pos)), region)
 
 
-func _draw_road(canvas: CanvasItem, cell_pos: Vector2i, cell: Cell) -> void:
+func _draw_road(canvas: CanvasItem, cell_pos: Vector2i, cell: Cell, tint := Color(1, 1, 1)) -> void:
 	var tile := catalog.get_tile(cell.road)
 	var texture := catalog.get_texture(tile)
 	if texture == null:
 		return
 	var region := catalog.get_region(tile, texture.get_height(), cell.road_variant)
-	canvas.draw_texture_rect_region(texture, _ground_rect(region, cell_screen_pos(cell_pos)), region)
+	canvas.draw_texture_rect_region(texture, _ground_rect(region, cell_screen_pos(cell_pos)), region, tint)
 
 
 ## Zone overlay: drawn lifted with the tile, under any building. Zones

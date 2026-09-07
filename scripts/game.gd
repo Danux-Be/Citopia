@@ -97,6 +97,12 @@ func found_city() -> void:
 
 func _on_tool_selected(tool_id: String) -> void:
 	iso_map.selected_tool = tool_id
+	# SimCity-style: picking the pipes tool dives underground; the dozer
+	# keeps the view if we were already down there (bulldozing pipes)
+	iso_map.underground_view = iso_map.is_pipe_tool(tool_id) \
+			or (tool_id == IsoMap.DOZER and iso_map.underground_view)
+	$Traffic.visible = not iso_map.underground_view
+	_pedestrians.visible = not iso_map.underground_view
 	iso_map.set_hovered(iso_map.hovered)  # refresh validity coloring
 
 
@@ -130,7 +136,7 @@ func _process(delta: float) -> void:
 		# Drag-painting for terrain tools, zones and roads.
 		var tool := iso_map.selected_tool
 		var paintable := tool in [IsoMap.RAISE, IsoMap.LOWER, IsoMap.LEVEL, IsoMap.DOZER, IsoMap.DEZONE] \
-				or iso_map.is_zone_tool(tool) or iso_map.is_road_tool(tool)
+				or iso_map.is_zone_tool(tool) or iso_map.is_road_tool(tool) or iso_map.is_pipe_tool(tool)
 		if _painting and paintable:
 			_paint_timer -= delta
 			if _paint_timer <= 0.0:
@@ -229,6 +235,10 @@ func _apply_tool(cell: Vector2i, play_fail: bool) -> void:
 				iso_map.paint_zone(cell, iso_map.selected_tool)
 			elif iso_map.is_road_tool(iso_map.selected_tool):
 				if not iso_map.place_road(iso_map.selected_tool, cell) and play_fail:
+					$FailSound.stream = _fail_stream
+					$FailSound.play()
+			elif iso_map.is_pipe_tool(iso_map.selected_tool):
+				if not iso_map.place_pipe(cell) and play_fail:
 					$FailSound.stream = _fail_stream
 					$FailSound.play()
 			elif not iso_map.place(iso_map.selected_tool, cell) and play_fail:
