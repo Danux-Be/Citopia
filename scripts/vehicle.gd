@@ -45,8 +45,10 @@ var t := 0.0
 signal trip_finished(vehicle: Vehicle)
 
 var _texture: Texture2D
-var _draw_scale := 0.72
+var _draw_scale := 0.48
 var _tint := Color.WHITE
+var _heading := Vector2(0.894, 0.447)   # screen-space travel direction
+var _braking := false                    # brake lights lit
 
 
 func setup(p_iso_map: IsoMap, p_texture: Texture2D, p_color: int, p_path: Array[Vector2i]) -> void:
@@ -95,6 +97,8 @@ func _process(delta: float) -> void:
 		return
 	var target := cruise * clampf(speed_factor, 0.0, 1.0)
 	speed = move_toward(speed, target, (BRAKE if target < speed else ACCEL) * delta)
+	# brake lights: decelerating, or held at a stop by traffic
+	_braking = (target < speed - 0.02) or (speed_factor < 0.2 and speed < 0.3)
 	# count standing still: Traffic uses this to break priority deadlocks
 	if speed < 0.15 and speed_factor < 0.2:
 		wait_time += delta
@@ -121,6 +125,7 @@ func _process(delta: float) -> void:
 	# iso_to_screen of integer cells lands) to the diamond's centre, so both
 	# lanes sit inside the road instead of riding its top edge.
 	var heading := (iso_map.iso_to_screen(b.x, b.y) - iso_map.iso_to_screen(a.x, a.y)).normalized()
+	_heading = heading
 	var p := Vector2(a).lerp(Vector2(b), t)
 	position = iso_map.iso_to_screen(p.x, p.y) + Vector2(0, IsoMap.TILE_H * 0.5) \
 			+ Vector2(-heading.y, heading.x) * LANE_PX
@@ -161,3 +166,25 @@ func _draw() -> void:
 	var half_h := FRAME_H * 0.5 * _draw_scale
 	# the new art is centred in its frame: the anchor is the car's ground point
 	draw_texture_rect_region(_texture, Rect2(-half_w, -half_h, FRAME_W * _draw_scale, FRAME_H * _draw_scale), region, _tint)
+	_draw_lights()
+
+
+## Daytime running lights at the nose, taillights at the rear — dim red
+## while cruising, bright with a glow while braking.
+func _draw_lights() -> void:
+	var front := _heading
+	var perp := Vector2(-front.y, front.x)
+	var nose := front * (7.0 * _draw_scale)
+	var tail := -nose
+	var side := perp * (2.2 * _draw_scale)
+	# headlights: two warm dots at the nose
+	var drl := Color(1.0, 0.96, 0.72, 0.85)
+	draw_circle(nose + side, 1.1 * _draw_scale, drl)
+	draw_circle(nose - side, 1.1 * _draw_scale, drl)
+	# taillights
+	var brake_c := Color(1.0, 0.12, 0.08, 0.95 if _braking else 0.4)
+	if _braking:
+		draw_circle(tail + side, 3.2 * _draw_scale, Color(1.0, 0.1, 0.05, 0.22))
+		draw_circle(tail - side, 3.2 * _draw_scale, Color(1.0, 0.1, 0.05, 0.22))
+	draw_circle(tail + side, (1.4 if _braking else 1.0) * _draw_scale, brake_c)
+	draw_circle(tail - side, (1.4 if _braking else 1.0) * _draw_scale, brake_c)
