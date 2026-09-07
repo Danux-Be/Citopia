@@ -38,6 +38,60 @@ const PIPE_TOOL := "underground_pipes"
 const SWAMP_MOISTURE := 0.35
 
 
+## Removes water bodies smaller than min_cells — noise puddles that read
+## as jagged specks. Real ponds and lakes survive.
+func _remove_water_specks(min_cells: int = 8) -> void:
+	var seen := {}
+	for y in map_size:
+		for x in map_size:
+			var pos := Vector2i(x, y)
+			if seen.has(pos) or not is_water_cell(pos):
+				continue
+			var comp: Array[Vector2i] = []
+			var stack: Array[Vector2i] = [pos]
+			seen[pos] = true
+			while not stack.is_empty():
+				var p: Vector2i = stack.pop_back()
+				comp.append(p)
+				for dy in range(-1, 2):
+					for dx in range(-1, 2):
+						var n: Vector2i = p + Vector2i(dx, dy)
+						if in_bounds(n) and not seen.has(n) and is_water_cell(n):
+							seen[n] = true
+							stack.append(n)
+			if comp.size() < min_cells:
+				for p in comp:
+					var c := _cell(p)
+					c.terrain = "terrain_sand_beach"
+					if c.obj != "":
+						c.obj = ""
+					c.terrain_variant = catalog.pick_variant(catalog.get_tile(c.terrain))
+
+
+## Keeps murky water in coherent patches: swamp cells without a murky
+## majority around them turn into clear lake water.
+func _smooth_murky(passes: int = 1) -> void:
+	for p in passes:
+		var to_clear: Array[Vector2i] = []
+		for y in map_size:
+			for x in map_size:
+				var pos := Vector2i(x, y)
+				if _cell(pos).terrain != "liquid_MurkyWater":
+					continue
+				var murky_n := 0
+				for dy in range(-1, 2):
+					for dx in range(-1, 2):
+						if dx == 0 and dy == 0:
+							continue
+						var n := pos + Vector2i(dx, dy)
+						if in_bounds(n) and _cell(n).terrain == "liquid_MurkyWater":
+							murky_n += 1
+				if murky_n < 3:
+					to_clear.append(pos)
+		for pos in to_clear:
+			_cell(pos).terrain = "water"
+
+
 ## Rounds the water bodies: lonely water cells dry into beach sand, land
 ## hemmed in by water floods, and every land tile touching water becomes a
 ## sand ring — calm, uniform shores instead of jagged noise edges.
@@ -234,6 +288,8 @@ func generate_map(params: Dictionary = {}) -> void:
 			_cells[x + y * map_size] = cell
 
 	_erosion_swamp()
+	_remove_water_specks(8)
+	_smooth_murky(2)
 	_smooth_shores(3)
 	_place_water_flora()
 	_place_trees()
