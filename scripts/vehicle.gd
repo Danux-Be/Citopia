@@ -20,9 +20,9 @@ const BRAKE := 10.0         # braking is firmer than engine response
 ## most of the 32x16 tile and reads far too big) and a subtle brightness
 ## tint layered over the 6 baked-in paint colors.
 const BODY_TYPES := [
-	{"scale": 0.46, "weight": 4, "jitter": 0.10},   # compact
-	{"scale": 0.53, "weight": 4, "jitter": 0.08},   # sedan
-	{"scale": 0.61, "weight": 2, "jitter": 0.06},   # van
+	{"scale": 0.44, "weight": 4, "jitter": 0.10},   # compact
+	{"scale": 0.48, "weight": 4, "jitter": 0.08},   # sedan
+	{"scale": 0.53, "weight": 2, "jitter": 0.06},   # van
 ]
 
 ## world direction -> sheet direction index (E, S, W, N). The sheet leans

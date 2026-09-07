@@ -41,7 +41,7 @@ func _initialize() -> void:
 		var v: Vehicle = traffic.spawn_on_path(path)
 		scales[v._draw_scale] = true
 		tints[v._tint] = true
-		if v._draw_scale == 0.61:
+		if v._draw_scale == 0.53:
 			vans += 1
 		if v._draw_scale >= 1.0 or v._draw_scale < 0.4:
 			check(false, "scale out of range: %s" % v._draw_scale)
