@@ -54,6 +54,7 @@ func _ready() -> void:
 	add_child(weather)
 	_weather = weather
 	weather.lightning_struck.connect(_on_lightning_strike)
+	weather.setup_camera($GameCamera)
 	if "--rain" in args:
 		weather.force_rain()
 	if "--demo" in args or "--demo-elevation" in args:

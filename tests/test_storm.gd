@@ -75,11 +75,18 @@ func _initialize() -> void:
 	weather._ready()
 	weather.process_mode = Node.PROCESS_MODE_DISABLED
 	weather.force_rain()
-	check(weather.state == Weather.State.RAIN and weather._rain.amount == 340, "rain keeps gentle intensity")
+	var rain_total := 0
+	for l in weather._rain_layers:
+		rain_total += l.amount
+	check(weather.state == Weather.State.RAIN and absi(rain_total - int(Weather.RAIN_AMOUNT)) <= 8,
+		"rain keeps gentle intensity (%d)" % rain_total)
 	var struck := [0]
 	weather.lightning_struck.connect(func() -> void: struck[0] += 1)
 	weather._enter(Weather.State.STORM)
-	check(weather.is_storm() and weather._rain.amount == 720, "storm doubles the rain")
+	var storm_total := 0
+	for l in weather._rain_layers:
+		storm_total += l.amount
+	check(weather.is_storm() and absi(storm_total - int(Weather.STORM_AMOUNT)) <= 8, "storm raises the rain (%d)" % storm_total)
 	check(weather._tint_target == Weather.STORM_TINT_ALPHA, "storm gloom deeper")
 	check(weather._next_thunder <= Weather.STORM_THUNDER_RANGE.y, "storm thunder frequent")
 	weather._thunder_time = weather._next_thunder

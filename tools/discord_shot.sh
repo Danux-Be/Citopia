@@ -21,7 +21,7 @@ attempt=1
 while : ; do
 	rm -f "$SHOT"
 	DISPLAY="${DISPLAY:-:0}" timeout 150 godot --path . scenes/main.tscn \
-		++ --demo --shot > /tmp/discord_shot.log 2>&1 || true
+		++ --demo --shot $DISCORD_SHOT_ARGS > /tmp/discord_shot.log 2>&1 || true
 	# a real city capture is a rich PNG; a black/blank frame stays tiny
 	if [ -f "$SHOT" ] && [ "$(stat -c%s "$SHOT")" -gt 50000 ]; then
 		break

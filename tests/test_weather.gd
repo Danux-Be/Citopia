@@ -6,6 +6,14 @@ extends SceneTree
 var failures := 0
 
 
+func _all_rain_off(w: Weather) -> bool:
+	for l in w._rain_layers:
+		if l.emitting:
+			return false
+	return not w._splash.emitting
+
+
+
 func check(cond: bool, msg: String) -> void:
 	if cond:
 		print("PASS ", msg)
@@ -23,7 +31,7 @@ func _initialize() -> void:
 	# 1. starts sunny
 	check(weather.state == Weather.State.SUNNY and not weather.is_raining(),
 		"starts sunny")
-	check(not weather._rain.emitting, "no particles while sunny")
+	check(_all_rain_off(weather), "no particles while sunny")
 
 	# 2. rain loop is a looping stream
 	check(weather._rain_audio.stream is AudioStreamOggVorbis
@@ -32,7 +40,7 @@ func _initialize() -> void:
 	# 3. forcing rain: particles, gloom target, audio armed, thunder armed
 	weather.force_rain()
 	check(weather.is_raining(), "force_rain switches state")
-	check(weather._rain.emitting, "rain particles emit")
+	check(not _all_rain_off(weather), "rain layers emit")
 	check(weather._tint_target == Weather.TINT_ALPHA, "gloom tint targeted")
 	check(weather._rain_audio.stream != null and weather._audio_target_db > -10.0,
 		"rain loop stream loaded and volume armed")
@@ -59,7 +67,7 @@ func _initialize() -> void:
 	weather._state_time = weather._next_change + 0.1
 	weather._process(0.016)
 	check(weather.state == Weather.State.SUNNY, "rain returns to sunny on schedule")
-	check(not weather._rain.emitting, "particles stop with the shower")
+	check(_all_rain_off(weather), "particles stop with the shower")
 
 	# 7. dry spell ends with a new shower
 	weather._state_time = weather._next_change + 0.1
