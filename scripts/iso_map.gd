@@ -68,7 +68,57 @@ func _remove_water_specks(min_cells: int = 8) -> void:
 					c.terrain_variant = catalog.pick_variant(catalog.get_tile(c.terrain))
 
 
-## Keeps murky water in coherent patches: swamp cells without a murky
+## Terrain elevation: land rises from the coast (water = level 0) following
+## the elevation noise, then a relaxation pass enforces the gentle ±1 step
+## invariant between neighbours — every slope renders as a legacy ramp
+## sprite, never a cliff higher than one level.
+func _apply_heights(hills_pct: float) -> void:
+	if hills_pct <= 0.0:
+		return
+	var max_h := int(ceil(hills_pct / 100.0 * 6.0))
+	# dedicated low-frequency noise: smooth large hills the ±1 terrace
+	# invariant can actually express (the elevation noise is too busy)
+	var hills := FastNoiseLite.new()
+	hills.seed = 987
+	hills.frequency = 0.02
+	var total := map_size * map_size
+	var height := PackedInt32Array()
+	height.resize(total)
+	for i in total:
+		height[i] = 0 if _cells[i].terrain in WATER_TERRAINS \
+			else clampi(int(round((hills.get_noise_2d(i % map_size, i / map_size) + 1.0) * 0.5 * max_h)), 0, max_h)
+	# exact 4-neighbour lower envelope of the targets (chamfer two-pass):
+	# every land cell ends within 1 level of its orthogonal neighbours while
+	# the hill shapes survive. Water anchors the coasts at level 0.
+	_sweep_heights(height, 1)
+	_sweep_heights(height, -1)
+	for i in total:
+		_cells[i].height = height[i]
+
+
+func _sweep_heights(height: PackedInt32Array, dir: int) -> void:
+	var x0 := 0
+	var x1 := map_size
+	var y0 := 0
+	var y1 := map_size
+	if dir < 0:
+		x0 = map_size - 1
+		x1 = -1
+		y0 = map_size - 1
+		y1 = -1
+	for y in range(y0, y1, dir):
+		for x in range(x0, x1, dir):
+			var i := x + y * map_size
+			var lo := height[i]
+			for n in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				var q: Vector2i = Vector2i(x, y) + n
+				if in_bounds(q):
+					lo = mini(lo, height[q.x + q.y * map_size] + 1)
+			if lo < height[i]:
+				height[i] = lo
+
+
+## Keeps murky water in coherent patches## Keeps murky water in coherent patches## Keeps murky water in coherent patches: swamp cells without a murky
 ## majority around them turn into clear lake water.
 func _smooth_murky(passes: int = 1) -> void:
 	for p in passes:
@@ -255,14 +305,15 @@ func _build_growth_pool() -> void:
 ##   size: int          map side in tiles
 ##   water_pct: 0..100  share of the map under water
 ##   trees_pct: 0..100  forest density
-##   hills_pct: 0..100  IGNORED for now: maps are generated flat so roads
-##                      and vehicle traffic stay simple
+##   hills_pct: 0..100  terraced hill amplitude (gentle ±1 slopes,
+##                      ramps rendered from the legacy sheets)
 func generate_map(params: Dictionary = {}) -> void:
 	var seed_value: int = params.get("seed", 1234)
 	if params.has("size"):
 		map_size = int(params.size)
 	var water_pct: float = params.get("water_pct", 22.0)
 	var trees_pct: float = params.get("trees_pct", 50.0)
+	var hills_pct: float = params.get("hills_pct", 30.0)
 
 	var elevation := FastNoiseLite.new()
 	elevation.seed = seed_value
@@ -287,6 +338,7 @@ func generate_map(params: Dictionary = {}) -> void:
 			cell.terrain_variant = catalog.pick_variant(catalog.get_tile(cell.terrain))
 			_cells[x + y * map_size] = cell
 
+	_apply_heights(hills_pct)
 	_erosion_swamp()
 	_remove_water_specks(8)
 	_smooth_murky(2)

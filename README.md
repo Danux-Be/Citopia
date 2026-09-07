@@ -76,8 +76,10 @@ open, on a modern and moddable engine.
   traffic (queues form naturally), slow-downs on turns and junction
   approaches, and a deadlock-breaker timeout so crossings never gridlock.
   Every car also has its own top speed and acceleration, a body type
-  (compact, sedan, van) and a subtly tinted paint job. Maps are flat
-  for now (the Hills slider is disabled in the map editor)
+  (compact, sedan, van) and a subtly tinted paint job. Terrain comes
+  with gentle terraced hills by default (the Hills slider is live in
+  the map editor): the water stays at level 0, slopes render as legacy
+  ramp sprites, and roads need flat ground
 - 🚶 **Pedestrians**: tiny citizens (1×3 px figures sliced out of the legacy
   crowd decoration sheets) stroll along the curb lines of the road network —
   each with its own silhouette, a little step bounce, and the occasional

@@ -167,11 +167,14 @@ func _target_fleet() -> int:
 
 
 func _spawn_one() -> void:
-	var start := _pick_populated_road()
-	var path := _longest_of_candidates(start)
-	if path.size() < 2:
-		return
-	spawn_on_path(path)
+	# hill plateaus fragment the network: retry a few populated roads before
+	# giving up (random picks can land on short isolated fragments)
+	for attempt in 8:
+		var start := _pick_populated_road()
+		var path := _longest_of_candidates(start)
+		if path.size() >= 2:
+			spawn_on_path(path)
+			return
 
 
 ## Put a vehicle on an explicit cell path (also the test seam).

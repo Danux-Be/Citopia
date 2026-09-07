@@ -19,7 +19,7 @@ func _initialize() -> void:
 	var map := IsoMap.new()
 	root.add_child(map)
 	map._ready()
-	map.generate_map({"seed": 7, "water_pct": 0})
+	map.generate_map({"seed": 7, "water_pct": 0, "hills_pct": 0})
 	for i in range(15, 26):
 		map.place_road("road_paved", Vector2i(i, 20))
 	for i in range(15, 26):

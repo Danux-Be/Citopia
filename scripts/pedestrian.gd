@@ -59,8 +59,9 @@ func _process(delta: float) -> void:
 	var heading := (iso_map.iso_to_screen(cur_cell.x, cur_cell.y)
 			- iso_map.iso_to_screen(prev_cell.x, prev_cell.y)).normalized()
 	var p := Vector2(prev_cell).lerp(Vector2(cur_cell), t)
-	position = iso_map.iso_to_screen(p.x, p.y) + Vector2(0, IsoMap.TILE_H * 0.5) \
-			+ Vector2(-heading.y, heading.x) * CURB_PX
+	var h := lerpf(float(iso_map.height_at(prev_cell)), float(iso_map.height_at(cur_cell)), t)
+	position = iso_map.iso_to_screen(p.x, p.y) - Vector2(0, h * IsoMap.HEIGHT_STEP) \
+			+ Vector2(0, IsoMap.TILE_H * 0.5) + Vector2(-heading.y, heading.x) * CURB_PX
 	_update_z(prev_cell if t < 0.5 else cur_cell)
 	queue_redraw()
 
