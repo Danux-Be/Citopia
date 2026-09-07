@@ -43,6 +43,7 @@ var _current := ""
 var _tabs: TabBar
 var _grid_popup: PanelContainer
 var _grid: GridContainer
+var _scroll: ScrollContainer
 
 
 func setup(catalog: TileCatalog) -> void:
@@ -115,7 +116,8 @@ func _build_ui() -> void:
 	_grid_popup.add_theme_stylebox_override("panel", _panel_style())
 	_grid_popup.visible = false
 	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(620, 230)
+	_scroll = scroll
+	_scroll.custom_minimum_size = Vector2(620, 230)  # default; resized per tab
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_grid = GridContainer.new()
 	_grid.columns = 12
@@ -139,13 +141,31 @@ func _on_tab_changed(tab: int) -> void:
 func _fill_grid(categories: Array) -> void:
 	for child in _grid.get_children():
 		child.queue_free()
+	var items := 0
 	for category: String in categories:
 		for tile_id in _catalog.get_ids_by_category(category):
 			var tile := _catalog.get_tile(tile_id)
 			var icon := _make_icon(tile)
 			if icon == null:
 				continue
-			_grid.add_child(_make_tool_button(tile_id, icon, "%s (%s)" % [tile.get("title", tile_id), category]))
+			var price := int(tile.get("price", 0))
+			var tip := "%s — C$%d (%s)" % [tile.get("title", tile_id), price, category]
+			var desc := str(tile.get("description", ""))
+			if desc.length() > 110:
+				desc = desc.substr(0, 110) + "..."
+			if desc != "":
+				tip += "\n" + desc
+			_grid.add_child(_make_tool_button(tile_id, icon, tip))
+			items += 1
+	_fit_popup(items)
+
+
+## The popup hugs its content: few tiles -> small window, capped at 620x300.
+func _fit_popup(items: int) -> void:
+	var rows := ceili(items / float(_grid.columns))
+	var w := clampi(_grid.columns * (ICON_SIZE + 4) + 16, 220, 620)
+	var h := clampi(rows * (ICON_SIZE + 4) + 16, 60, 300)
+	_scroll.custom_minimum_size = Vector2(w, h)
 
 
 func _make_icon(tile: Dictionary) -> Texture2D:
